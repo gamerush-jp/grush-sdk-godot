@@ -19,6 +19,14 @@ const RIVAL_RATINGS := [1000.0, 1200.0, 1500.0]
 
 static var _states: Dictionary = {}
 static var _seeded := false
+# 確認用の表示。GameRush と同じく、受け取る相手は1つで後から来たものに置き換え、同じ状態は1回だけ渡し、
+# 受け取る相手が状態より後に来ても、来たときに渡す。
+static var _preview: Variant = null
+static var _preview_seq := 0
+static var _preview_delivered_seq := 0
+static var _preview_handler := Callable()
+static var _preview_token := 0
+static var _next_preview_token := 1
 
 
 ## [param rating] を渡すと、相手探しの範囲の絞り込みを試せる。
@@ -29,11 +37,62 @@ static func define(
 	_put(pseudo_id, payload, hidden, rating)
 
 
-## 置いた状態を消し、モックの相手の状態を置き直す。
+## 置いた状態と、まだ渡していない確認用の表示の状態を消し、モックの相手の状態を置き直す。
 static func reset() -> void:
 	_states.clear()
 	_seeded = false
+	_preview = null
+	_preview_delivered_seq = _preview_seq
 	_ensure_rivals()
+
+
+## GameRush の確認用の表示を起こす。[param pseudo_id] と [param payload] を持つ公開プレイヤー状態が、
+## [code]GRush.player_state.preview_received[/code] で後のフレームに届く（`updated_at` は呼んだ時刻）。
+## 呼ぶたびに1回だけ届く。接続が無いうちに呼んだ分は、最後に呼んだ分だけが接続した後に届く。
+## GameRush が渡す `pseudo_id` は本物の疑似 ID ではない決まった値で、`rating` は null。
+## [param pseudo_id] が空、[param revision] が負、[param rating] が有限の数値でも null でもないときは何もしない。
+static func preview(
+	pseudo_id: String, payload: Dictionary, revision: int = 1, rating: Variant = null
+) -> void:
+	if pseudo_id == "" or revision < 0:
+		return
+	if rating != null and not _is_finite_number(rating):
+		return
+	_preview = {
+		"pseudoId": pseudo_id,
+		"payload": payload.duplicate(true),
+		"revision": revision,
+		"rating": null if rating == null else float(rating),
+		"updatedAt": Time.get_datetime_string_from_system(true) + "Z",
+	}
+	_preview_seq += 1
+	_deliver_preview()
+
+
+## 確認用の表示の状態を受け取る相手を置き、外すときに渡す番号を返す。SDK のモックの受け取り口が呼ぶ。
+static func watch_preview(handler: Callable) -> int:
+	_preview_handler = handler
+	_preview_token = _next_preview_token
+	_next_preview_token += 1
+	_deliver_preview()
+	return _preview_token
+
+
+static func unwatch_preview(token: int) -> void:
+	if token != _preview_token:
+		return
+	_preview_handler = Callable()
+	_preview_token = 0
+
+
+# GameRush と同じく、受け取る相手を呼ぶのは後に回す。
+static func _deliver_preview() -> void:
+	if not _preview_handler.is_valid() or _preview == null:
+		return
+	if _preview_delivered_seq == _preview_seq:
+		return
+	_preview_delivered_seq = _preview_seq
+	_preview_handler.call_deferred(_preview.duplicate(true))
 
 
 static func exists(pseudo_id: String) -> bool:
@@ -142,6 +201,10 @@ static func _wire(key: String) -> Dictionary:
 		"rating": entry["rating"],
 		"updatedAt": "",
 	}
+
+
+static func _is_finite_number(value: Variant) -> bool:
+	return value is int or (value is float and is_finite(value))
 
 
 static func _is_integer(value: Variant) -> bool:

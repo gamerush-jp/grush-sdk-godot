@@ -4,7 +4,7 @@ GameRush の GameAPI を Godot 4 から呼ぶアドオン。ビルドの書き�
 
 ## 導入
 
-[リリース](https://github.com/gamerush-cc/grush-sdk-godot/releases)から版（例: `v1.9.1`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
+[リリース](https://github.com/gamerush-cc/grush-sdk-godot/releases)から版（例: `v1.10.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
 
 書き出しは Web。それ以外のプラットフォームでは自動的にモックへ落ちる。
 
@@ -38,6 +38,19 @@ if found["ok"]:
 ```
 
 `sample` は同じゲームの他プレイヤーの公開状態をランダムに返す（`count` は 1〜20、既定 10）。自分と運営が伏せた状態は返らず、名前も返らない。`min_rating` と `max_rating` は一緒に渡し、範囲を渡すと `rating` の無い状態は返らない。`set_mine` の第3引数の `rating` は -1e9 より大きく 1e9 より小さい数値で、`null` で消し、渡さなければ今の値のまま。書かれていない `rating` は `null`。古い GameRush（`protocolVersion` 7 未満）では `sample` が `unsupported`、`set_mine` は `rating` を送らずに payload だけを書く。
+
+### 公開プレイヤー状態の確認用の表示
+
+```gdscript
+func _ready() -> void:
+    GRush.player_state.preview_received.connect(_on_preview)
+
+
+func _on_preview(state: Dictionary) -> void:
+    show_rival_card(state["payload"])
+```
+
+GameRush の確認用の表示で、公開プレイヤー状態がほかのプレイヤーにどう見えるかを描くよう頼まれたときに、`preview_received` が発火する。`state` は `get_mine` の値と同じ形（`pseudo_id`・`payload`・`revision`・`rating`・`updated_at`）。受け取ったら、ほかのプレイヤーの状態を見せるのと同じ画面で `payload` を描く。`pseudo_id` は本物の疑似 ID ではない決まった値で、`rating` は `null`。同じ状態は1回だけ届き、接続より先に届いた状態は接続した後に届く。JS の呼び出しの中ではなく `call_deferred` で後から配る。他プレイヤーの状態を見せるゲームは接続しておく。確認用の表示の外では発火しない。古い GameRush（`protocol_version` 10 未満）と GameRush の外でも発火せず、ほかの機能はそのまま使える。`GRush.use_backend` でバックエンドを差し替えても `GRush.player_state` は同じインスタンスのままで、接続は新しいバックエンドから受け続ける。
 
 ### 受信箱
 
@@ -178,11 +191,17 @@ opponent.received.connect(func(message: Dictionary) -> void: opponent.send(reply
 
 表示言語のモックは `GRushMock.locale`（例 `"en-US"`、`source` は `"user"`）を返し、空なら `OS.get_locale()` を BCP47 に直して `source: "device"` で返す。モックは `changed` を発火しない。
 
+確認用の表示のモックは `GRushMockPlayerStates.preview(pseudo_id, payload, revision = 1, rating = null)` で起こす。渡した値を持つ状態が後のフレームで `preview_received` に届き、`updated_at` は呼んだ時刻。GameRush が渡す `pseudo_id` は決まった値で `rating` は `null` なので、描き分けを試すときだけ変える。呼ぶたびに1回だけ届き、接続が無いうちに呼んだ分は、最後に呼んだ分だけが接続した後に届く。`pseudo_id` が空、`revision` が負、`rating` が有限の数値でも `null` でもないときは何もしない。`GRushMockPlayerStates.reset()` で、まだ届いていない分を捨てる。
+
+```gdscript
+GRushMockPlayerStates.preview("mock-rival-1", {"deck": "fire", "level": 12})
+```
+
 起動パラメータのモックは `GRushMock.launch_params`（既定 `{}`。例 `GRushMock.launch_params = {"item": "sword"}`）をそのまま返す。GameRush の制限では確かめない。
 
 共有のモックは確認シートを出さず、`GRushMock.share_status`（既定 `"opened"`）を返す。`GRushMock.share_available = false` で共有できない環境を試せる。起動パラメータは GameRush と同じ制限で確かめ、合わなければ `invalidParams`。本文と画像の検査はしない。
 
-アナリティクスのモックは、GameRush と同じ検査をして、通ったイベントを1件ずつ出力し、直近の 200 件を `GRushMock.analytics_events`（GameRush へ渡すのと同じ形の Dictionary の配列）に持つ。弾いたイベントは、GameRush と同じく理由ごとに1回だけ警告する。前面に出るまでの 30 件の溜め・本体の上限・同じステップを最初の1回だけ残す扱い・セッションあたりの上限は再現しないので、モックでは `true` の分がすべて記録に残る。どこへも送らない。モックが名乗る `protocol_version` は 9。モックを使うのは Web 以外の書き出しとエディタだけで、Web の書き出しを GameRush の外で開いたときは、どの呼び出しも `false` になる。
+アナリティクスのモックは、GameRush と同じ検査をして、通ったイベントを1件ずつ出力し、直近の 200 件を `GRushMock.analytics_events`（GameRush へ渡すのと同じ形の Dictionary の配列）に持つ。弾いたイベントは、GameRush と同じく理由ごとに1回だけ警告する。前面に出るまでの 30 件の溜め・本体の上限・同じステップを最初の1回だけ残す扱い・セッションあたりの上限は再現しないので、モックでは `true` の分がすべて記録に残る。どこへも送らない。モックが名乗る `protocol_version` は 10。モックを使うのは Web 以外の書き出しとエディタだけで、Web の書き出しを GameRush の外で開いたときは、どの呼び出しも `false` になる。
 
 相手探し・受信箱・交換所のモックは、`GRushMock.RIVALS` の 3 人の相手を持つ。相手はそれぞれ rating 付きの公開プレイヤー状態を持ち、届いたメッセージを同じ kind と payload で送り返す。はじめと `GRushMockInbox.reset()` / `GRushMockTrades.reset()` の後は、最初の相手からのメッセージ1通と、相手の受付中の出品を2件持つ。payload・offer・want・give の形、`operation_id` での冪等、受付中の出品の上限、受諾の `outcome`、`pending` と ack は GameRush と同じ規則で動く（バイト数は Godot の `JSON.stringify` で数えるので、`3.0` のような小数点の付く数値を GameRush より多く数えることがある）。通報を承諾すると（`GRushMock.confirm_inbox_report` / `confirm_trade_report`、既定 `true`）相手をブロックし、その相手のメッセージと出品は見えなくなる。プレイヤー状態の通報は伏せていない状態にだけ届き、確認の答えを `GRushMock.confirm_player_state_report`（既定 `true`）で決める。
 

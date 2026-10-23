@@ -5,8 +5,8 @@ const MockPeer := preload("res://addons/grush_sdk/grush_mock_peer.gd")
 
 const STATE_PATH := GRushMock.STATE_PATH
 const STATE_SECTION := GRushMock.STATE_SECTION
-# モックが実装している一番新しい機能（共有に添える起動パラメータ）の版数。
-const MOCK_PROTOCOL_VERSION := 9
+# モックが実装している一番新しい機能（公開プレイヤー状態の確認用の表示）の版数。
+const MOCK_PROTOCOL_VERSION := 10
 
 var _members: Array = []
 var _outgoing_seq: Dictionary = {}

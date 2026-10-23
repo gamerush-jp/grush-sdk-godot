@@ -18,13 +18,53 @@ const PLAYER_STATE_PROTOCOL_VERSION := 2
 ## 相手探し（[method sample] と [method set_mine] の rating）が使えるランタイムの版数。
 const MATCHMAKING_PROTOCOL_VERSION := 7
 
+## 確認用の表示（[signal preview_received]）が使えるランタイムの版数。
+const PREVIEW_PROTOCOL_VERSION := 10
+
+## GameRush の確認用の表示で、この公開プレイヤー状態がほかのプレイヤーにどう見えるかを描くよう
+## 頼まれたときに発火する。[param state] は [method get_mine] の値と同じ形の Dictionary
+## （`pseudo_id`・`payload`・`revision`・`rating`・`updated_at`）。受け取ったら、ほかのプレイヤーの
+## 状態を見せるのと同じ画面で描く。`pseudo_id` は決まった値で、`rating` は null。
+## 同じ状態は1回だけ届く。接続より先に届いた状態は、接続した後に届く。
+## JavaScript の呼び出しの中ではなく `call_deferred` で後から配る。
+## 版数が [constant PREVIEW_PROTOCOL_VERSION] 未満のランタイムと GameRush の外では発火しない。
+## [method GRush.use_backend] でバックエンドを差し替えても接続はそのまま、新しいバックエンドから届く。
+signal preview_received(state: Dictionary)
+
 var _grush: Node
 var _backend: RefCounted
+var _preview_transport: RefCounted
+var _preview_watching := false
+var _disposed := false
+# use_backend のたびに増やす。差し替える前の受け取り口から call_deferred で積まれた状態を捨てるため。
+var _preview_generation := 0
 
 
-func _init(grush: Node, backend: RefCounted) -> void:
+func _init(grush: Node, backend: RefCounted, preview_transport: RefCounted = null) -> void:
 	_grush = grush
+	use_backend(backend, preview_transport)
+
+
+## 呼び出し先と、確認用の表示の受け取り口を差し替える。[signal preview_received] への接続はそのまま、
+## 新しい受け取り口から届く。GRush.use_backend が呼ぶ。
+func use_backend(backend: RefCounted, preview_transport: RefCounted = null) -> void:
 	_backend = backend
+	_stop_preview_poll()
+	if _preview_transport != null:
+		_preview_transport.dispose()
+	_preview_transport = preview_transport
+	_preview_watching = false
+	_preview_generation += 1
+	_watch_preview_when_connected()
+
+
+func dispose() -> void:
+	_disposed = true
+	_stop_preview_poll()
+	if _preview_transport != null:
+		_preview_transport.dispose()
+	_preview_transport = null
+	_grush = null
 
 
 ## 自分の状態を読む。運営が hidden にしていても本人には返る。
@@ -117,6 +157,51 @@ func report(pseudo_id: String) -> Dictionary:
 	var raw: Variant = response["value"]
 	var reported: bool = bool(raw.get("reported", false)) if raw is Dictionary else false
 	return Result.ok(reported)
+
+
+# ランタイムは確認用の表示の状態を、登録している相手へ1回だけ渡す。Godot の signal は接続されたことを
+# 知らせないので、接続が無いうちに登録すると、まだ接続していないゲームの分の状態を SDK が受けて捨てることになる。
+# 接続ができるまでフレームごとに確かめ、できてからランタイムへ登録する。ランタイムは登録より先に来た状態も
+# 登録したときに渡す。登録した後は接続が外れても登録したままにする。
+func _watch_preview_when_connected() -> void:
+	if _preview_watching or not _preview_supported():
+		_stop_preview_poll()
+		return
+	if not has_connections("preview_received"):
+		var tree := Engine.get_main_loop() as SceneTree
+		if tree != null and not tree.process_frame.is_connected(_watch_preview_when_connected):
+			tree.process_frame.connect(_watch_preview_when_connected)
+		return
+	_stop_preview_poll()
+	_preview_watching = true
+	var generation := _preview_generation
+	_preview_transport.watch(func(raw: Variant) -> void: _on_preview(generation, raw))
+
+
+func _stop_preview_poll() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree != null and tree.process_frame.is_connected(_watch_preview_when_connected):
+		tree.process_frame.disconnect(_watch_preview_when_connected)
+
+
+# JavaScript の呼び出しの中でゲームのコードを動かさない。
+func _on_preview(generation: int, raw: Variant) -> void:
+	if raw is Dictionary:
+		_emit_preview.call_deferred(generation, _state_of(raw))
+
+
+func _emit_preview(generation: int, state: Dictionary) -> void:
+	if not _disposed and generation == _preview_generation:
+		preview_received.emit(state)
+
+
+func _preview_supported() -> bool:
+	return (
+		not _disposed
+		and _preview_transport != null
+		and _grush.is_available()
+		and _grush.protocol_version() >= PREVIEW_PROTOCOL_VERSION
+	)
 
 
 func _call(method: String, params: Dictionary) -> Dictionary:

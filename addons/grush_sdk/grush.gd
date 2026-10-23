@@ -14,6 +14,8 @@ const PlayerApi := preload("res://addons/grush_sdk/grush_player_api.gd")
 const NetApi := preload("res://addons/grush_sdk/grush_net_api.gd")
 const LeaderboardsApi := preload("res://addons/grush_sdk/grush_leaderboards_api.gd")
 const PlayerStateApi := preload("res://addons/grush_sdk/grush_player_state_api.gd")
+const PlayerStatePreviewWeb := preload("res://addons/grush_sdk/grush_player_state_preview_web.gd")
+const PlayerStatePreviewMock := preload("res://addons/grush_sdk/grush_player_state_preview_mock.gd")
 const ShareApi := preload("res://addons/grush_sdk/grush_share_api.gd")
 const ShareWeb := preload("res://addons/grush_sdk/grush_share_web.gd")
 const ShareMock := preload("res://addons/grush_sdk/grush_share_mock.gd")
@@ -56,17 +58,24 @@ func _exit_tree() -> void:
 	if locale != null:
 		locale.dispose()
 	locale = null
+	if player_state != null:
+		player_state.dispose()
+	player_state = null
 
 
 ## バックエンドを差し替える。null なら実行環境に合うものを作り直す。
-## locale は作り直さないので、changed への接続は新しいバックエンドの通知を受け続ける。
+## locale と player_state は作り直さないので、changed と preview_received への接続は
+## 新しいバックエンドの通知を受け続ける。
 func use_backend(replacement: RefCounted) -> void:
 	_dispose()
 	backend = replacement if replacement != null else _create_backend()
 	player = PlayerApi.new(self, backend)
 	net = NetApi.new(self, backend)
 	leaderboards = LeaderboardsApi.new(self, backend)
-	player_state = PlayerStateApi.new(self, backend)
+	if player_state == null:
+		player_state = PlayerStateApi.new(self, backend, _player_state_preview_transport(backend))
+	else:
+		player_state.use_backend(backend, _player_state_preview_transport(backend))
 	share = ShareApi.new(self, _share_transport(backend))
 	if locale == null:
 		locale = LocaleApi.new(self, _locale_transport(backend))
@@ -87,7 +96,6 @@ func _dispose() -> void:
 	player = null
 	net = null
 	leaderboards = null
-	player_state = null
 	share = null
 	launch = null
 	analytics = null
@@ -143,6 +151,14 @@ func _locale_transport(active: RefCounted) -> RefCounted:
 		return LocaleWeb.new()
 	if active is MockBackend:
 		return LocaleMock.new()
+	return null
+
+
+func _player_state_preview_transport(active: RefCounted) -> RefCounted:
+	if active is WebBackend:
+		return PlayerStatePreviewWeb.new()
+	if active is MockBackend:
+		return PlayerStatePreviewMock.new()
 	return null
 
 
