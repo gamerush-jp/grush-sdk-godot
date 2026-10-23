@@ -46,11 +46,15 @@ func watch(handler: Callable) -> void:
 	_watch_id = int(_shim().watch(_watch_callback))
 
 
-func dispose() -> void:
+func unwatch() -> void:
 	if _watch_id != 0:
 		_shim().unwatch(_watch_id)
 		_watch_id = 0
 	_watch_callback = null
+
+
+func dispose() -> void:
+	unwatch()
 
 
 func _on_watch(handler: Callable, args: Array) -> void:

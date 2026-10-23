@@ -55,7 +55,7 @@ func use_backend(backend: RefCounted, preview_transport: RefCounted = null) -> v
 	_preview_transport = preview_transport
 	_preview_watching = false
 	_preview_generation += 1
-	_watch_preview_when_connected()
+	_sync_preview_watch()
 
 
 func dispose() -> void:
@@ -159,29 +159,36 @@ func report(pseudo_id: String) -> Dictionary:
 	return Result.ok(reported)
 
 
-# ランタイムは確認用の表示の状態を、登録している相手へ1回だけ渡す。Godot の signal は接続されたことを
-# 知らせないので、接続が無いうちに登録すると、まだ接続していないゲームの分の状態を SDK が受けて捨てることになる。
-# 接続ができるまでフレームごとに確かめ、できてからランタイムへ登録する。ランタイムは登録より先に来た状態も
-# 登録したときに渡す。登録した後は接続が外れても登録したままにする。
-func _watch_preview_when_connected() -> void:
-	if _preview_watching or not _preview_supported():
+# ランタイムへの登録を、preview_received に接続があるときだけにそろえる。Godot の signal は接続と切断を
+# 知らせないので、フレームごとに has_connections で確かめる。
+# - 接続が無いうちに登録すると、ランタイムは1回だけ渡す状態を SDK に渡し、受け手がいないまま捨てることになる。
+#   ランタイムは登録より先に来た状態も登録したときに渡すので、接続ができてから登録すれば取りこぼさない。
+# - 接続が無くなったら登録を外す。外さないと、その後に来た状態を受け手がいないまま受け取ったことにしてしまう。
+#   外した後に来た状態は、接続し直して登録したときに届く。
+# - 確かめるのは、確認用の表示が使える間はずっと続ける。止めると、遅れて接続したゲームが受け取れない。
+#   1回の確かめは接続の有無を読むだけで軽い。
+func _sync_preview_watch() -> void:
+	if not _preview_supported():
 		_stop_preview_poll()
 		return
-	if not has_connections("preview_received"):
-		var tree := Engine.get_main_loop() as SceneTree
-		if tree != null and not tree.process_frame.is_connected(_watch_preview_when_connected):
-			tree.process_frame.connect(_watch_preview_when_connected)
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree != null and not tree.process_frame.is_connected(_sync_preview_watch):
+		tree.process_frame.connect(_sync_preview_watch)
+	var connected := has_connections("preview_received")
+	if connected == _preview_watching:
 		return
-	_stop_preview_poll()
-	_preview_watching = true
-	var generation := _preview_generation
-	_preview_transport.watch(func(raw: Variant) -> void: _on_preview(generation, raw))
+	_preview_watching = connected
+	if connected:
+		var generation := _preview_generation
+		_preview_transport.watch(func(raw: Variant) -> void: _on_preview(generation, raw))
+	else:
+		_preview_transport.unwatch()
 
 
 func _stop_preview_poll() -> void:
 	var tree := Engine.get_main_loop() as SceneTree
-	if tree != null and tree.process_frame.is_connected(_watch_preview_when_connected):
-		tree.process_frame.disconnect(_watch_preview_when_connected)
+	if tree != null and tree.process_frame.is_connected(_sync_preview_watch):
+		tree.process_frame.disconnect(_sync_preview_watch)
 
 
 # JavaScript の呼び出しの中でゲームのコードを動かさない。
