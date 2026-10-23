@@ -86,7 +86,7 @@ var mine: Dictionary = await GRush.trade.mine()
 1. 出品の前に、出すアイテムを手元のセーブで仮置き（使えない状態）にする
 2. `operation_id`（`^[A-Za-z0-9._:-]{1,64}$`）をセーブに保存してから `create` する
 3. 応答が失われたら、同じ `operation_id` で呼び直す。同じ `operation_id` の再送は、中身によらず先に作った出品を返す
-4. `mine()` の `pending` をセーブに反映し、クラウドセーブに保存してから `ack` する
+4. `mine()` の `pending` をセーブに反映し、セーブを永続化してから `ack` する（`ack` に渡せる id は 1 回 50 件まで）
 5. 反映済みの取引 ID をセーブに持ち、同じ取引を二度反映しない
 
 `pending` の `action` は `receiveGive`（出品者が `give` を受け取る）・`returnOffer`（出品者が `offer` を戻す。取り下げ・期限切れ・運営の非表示）・`receiveOffer`（受けた側が `offer` を受け取る）。知らない値は反映せず、ack もしない。
