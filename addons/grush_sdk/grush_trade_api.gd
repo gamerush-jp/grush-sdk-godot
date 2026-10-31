@@ -13,7 +13,8 @@ extends RefCounted
 ## 1. 出品の前に、出すアイテムを手元のセーブで仮置き（使えない状態）にする。
 ## 2. operation_id をセーブに保存してから [method create] を呼ぶ。
 ## 3. 応答が失われたら、同じ operation_id で呼び直す。同じ operation_id の再送は先に作った出品を返す。
-## 4. [method mine] の `pending` をセーブに反映し、クラウドセーブに保存してから [method ack] する。
+## 4. [method mine] の `pending` をセーブに反映し、セーブを永続化してから [method ack] する
+##    （ack に渡せる id は 1 回 50 件まで）。
 ## 5. 反映済みの取引 ID をセーブに持ち、同じ取引を二度反映しない。
 ##
 ## 出品は `{"id", "from", "to", "taker", "offer", "want", "offer_key", "want_key", "give", "status",

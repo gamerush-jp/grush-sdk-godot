@@ -10,6 +10,7 @@ const CHANNEL_UNRELIABLE := "unreliable"
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
 const WebBackend := preload("res://addons/grush_sdk/grush_backend_web.gd")
 const MockBackend := preload("res://addons/grush_sdk/grush_backend_mock.gd")
+const UnsupportedBackend := preload("res://addons/grush_sdk/grush_backend_unsupported.gd")
 const PlayerApi := preload("res://addons/grush_sdk/grush_player_api.gd")
 const NetApi := preload("res://addons/grush_sdk/grush_net_api.gd")
 const LeaderboardsApi := preload("res://addons/grush_sdk/grush_leaderboards_api.gd")
@@ -133,8 +134,16 @@ func mock_raise_room_error(code: String, message: String) -> bool:
 
 
 func _create_backend() -> RefCounted:
-	if WebBackend.is_present():
+	return _backend_for(OS.has_feature("web"), WebBackend.is_present())
+
+
+# Web の書き出しを GameRush の外（作者の自サイトなど）で開いたときは、モックではなく unsupported にする。
+# モックの偽のプレイヤーやランキングを、本物の成功と取り違えさせないため。
+static func _backend_for(is_web: bool, web_present: bool) -> RefCounted:
+	if web_present:
 		return WebBackend.new()
+	if is_web:
+		return UnsupportedBackend.new()
 	return MockBackend.new()
 
 
@@ -170,10 +179,9 @@ func _launch_transport(active: RefCounted) -> RefCounted:
 	return null
 
 
-# Web の書き出しを GameRush の外で開いたときは、モックではなく送れない扱いにする（すべての呼び出しが false）。
 func _analytics_transport(active: RefCounted) -> RefCounted:
 	if active is WebBackend:
 		return AnalyticsWeb.new()
-	if active is MockBackend and not OS.has_feature("web"):
+	if active is MockBackend:
 		return AnalyticsMock.new()
 	return null
