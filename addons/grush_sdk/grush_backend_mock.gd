@@ -7,6 +7,9 @@ const STATE_PATH := GRushMock.STATE_PATH
 const STATE_SECTION := GRushMock.STATE_SECTION
 # モックが実装している一番新しい機能（公開プレイヤー状態の確認用の表示）の版数。
 const MOCK_PROTOCOL_VERSION := 10
+# GameRush と同じ mode と部屋コードの形。`$` は末尾の改行の前でも合うので `\z` で終える。
+const MODE_PATTERN := "^[A-Za-z0-9._:-]{1,32}\\z"
+const ROOM_CODE_PATTERN := "^[A-Za-z0-9]{4,12}\\z"
 
 var _members: Array = []
 var _outgoing_seq: Dictionary = {}
@@ -15,6 +18,8 @@ var _consented := false
 var _room_code := ""
 var _net_handler := Callable()
 var _random := RandomNumberGenerator.new()
+var _mode_pattern := RegEx.create_from_string(MODE_PATTERN)
+var _room_code_pattern := RegEx.create_from_string(ROOM_CODE_PATTERN)
 
 
 func _init() -> void:
@@ -45,8 +50,11 @@ func send(payload: PackedByteArray, channel: String, to: int) -> void:
 
 
 func add_peer(display_name: String, avatar_url: Variant = null) -> RefCounted:
+	var index := _next_free_index()
+	if index < 0:
+		return null
 	var peer := MockPeer.new(self)
-	peer.index = _next_free_index()
+	peer.index = index
 	peer.pseudo_id = "mock-peer-%d" % peer.index
 	peer.display_name = display_name
 	peer.avatar_url = avatar_url
@@ -104,7 +112,7 @@ func _handle(method: String, params: Dictionary) -> Dictionary:
 			_set_consent(false)
 			return Result.ok(_player_wire(false))
 		"net.join":
-			return Result.ok(_join(params))
+			return _join(params)
 		"net.leave":
 			_leave()
 			return Result.ok(null)
@@ -236,18 +244,32 @@ func _set_consent(value: bool) -> void:
 	config.save(STATE_PATH)
 
 
+# GameRush と同じく、今の部屋を先に抜け、失敗しても戻らない。形の誤りはゲームが直すので invalidParams、
+# 埋まった部屋は待てば入れるので unavailable で返す。
 func _join(params: Dictionary) -> Dictionary:
-	if _room_code == "":
-		_room_code = str(params.get("roomCode", "MOCKROOM"))
+	_leave()
+	var mode: Variant = params.get("mode", "default")
+	if not (mode is String) or _mode_pattern.search(mode) == null:
+		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid mode.")
+	var requested: Variant = params.get("roomCode")
+	if requested != null and (not (requested is String) or _room_code_pattern.search(requested) == null):
+		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid room code.")
+	var index := _next_free_index()
+	if index < 0:
+		return Result.failure(Result.CODE_UNAVAILABLE, "The mock room is full.")
+	if requested != null:
+		_room_code = str(requested).to_upper()
+	elif _room_code == "":
+		_room_code = "MOCKROOM"
 	var existing: Array = []
 	for entry in _members:
 		existing.append(_peer_wire(int(entry["index"])))
-	_local_index = _next_free_index()
+	_local_index = index
 	_members.append({"index": _local_index, "peer": null})
 	_members.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["index"] < b["index"])
 	_announce("peerjoin", _local_index, _peer_wire(_local_index))
-	return {
-		"roomId": "mock:%s:%s" % [str(params.get("mode", "default")), _room_code],
+	return Result.ok({
+		"roomId": "mock:%s:%s" % [mode, _room_code],
 		"roomCode": _room_code,
 		"localPeerIndex": _local_index,
 		"peers": existing,
@@ -255,7 +277,7 @@ func _join(params: Dictionary) -> Dictionary:
 		"epoch": 1,
 		"transport": "ws",
 		"serverTimeMs": Time.get_unix_time_from_system() * 1000.0,
-	}
+	})
 
 
 func _leave() -> void:
@@ -292,7 +314,7 @@ func _next_free_index() -> int:
 		)
 		if taken.is_empty():
 			return index
-	return GRushMock.max_peers - 1
+	return -1
 
 
 func _host_index() -> int:

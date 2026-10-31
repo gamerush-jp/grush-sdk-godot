@@ -185,7 +185,9 @@ var opponent := GRush.mock_add_peer("Sparring Partner")
 opponent.received.connect(func(message: Dictionary) -> void: opponent.send(reply))
 ```
 
-`GRush.mock_add_peer` で作った相手は同じプロセス内の2人目の peer として部屋に入り、送受信が実際に往復する。
+`GRush.mock_add_peer` で作った相手は同じプロセス内の2人目の peer として部屋に入り、送受信が実際に往復する。部屋が `GRushMock.max_peers` 人で埋まっていれば `null` を返す。
+
+モックの `GRush.net.join` は GameRush と同じく、`mode`（英数字と `._:-` の1〜32文字）か `room_code`（英数字の4〜12文字）の形が違えば `invalidParams` で失敗する。部屋が埋まっていれば `unavailable` で失敗する。
 
 `GRush.mock_raise_room_error(code, message)` は、自分がいる部屋に `error_received` を届ける（次のフレーム以降に届き、部屋は閉じない）。部屋にいなければ `false` を返す。
 
