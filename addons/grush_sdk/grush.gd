@@ -7,6 +7,8 @@ const EVERYONE := -1
 const CHANNEL_RELIABLE := "reliable"
 const CHANNEL_UNRELIABLE := "unreliable"
 
+const LOCAL_HOSTNAMES := ["localhost", "127.0.0.1", "[::1]", "::1"]
+
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
 const WebBackend := preload("res://addons/grush_sdk/grush_backend_web.gd")
 const MockBackend := preload("res://addons/grush_sdk/grush_backend_mock.gd")
@@ -134,17 +136,27 @@ func mock_raise_room_error(code: String, message: String) -> bool:
 
 
 func _create_backend() -> RefCounted:
-	return _backend_for(OS.has_feature("web"), WebBackend.is_present())
+	return _backend_for(OS.has_feature("web"), WebBackend.is_present(), _is_local_page())
 
 
 # Web の書き出しを GameRush の外（作者の自サイトなど）で開いたときは、モックではなく unsupported にする。
 # モックの偽のプレイヤーやランキングを、本物の成功と取り違えさせないため。
-static func _backend_for(is_web: bool, web_present: bool) -> RefCounted:
+# 手元のサーバと file:// で開いたときはモックにする。エディタの「ブラウザで実行」で試せるようにするため。
+static func _backend_for(is_web: bool, web_present: bool, local_page: bool) -> RefCounted:
 	if web_present:
 		return WebBackend.new()
-	if is_web:
+	if is_web and not local_page:
 		return UnsupportedBackend.new()
 	return MockBackend.new()
+
+
+static func _is_local_page() -> bool:
+	if not OS.has_feature("web"):
+		return false
+	var location := JavaScriptBridge.get_interface("location")
+	if location == null:
+		return false
+	return str(location.protocol) == "file:" or LOCAL_HOSTNAMES.has(str(location.hostname))
 
 
 func _share_transport(active: RefCounted) -> RefCounted:

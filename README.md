@@ -172,7 +172,7 @@ GRush.analytics.log_economy_event(
 
 ## エディタでの動作確認
 
-エディタと Web 以外の書き出しでは `grush_backend_mock.gd` が使われる。Web に書き出したゲームを GameRush の外で開いたときはモックを使わず、`GRush.is_available()` が `false` になって、どの呼び出しも `unsupported` を返す。`GRushMock` の static 変数で挙動を切り替える。
+エディタ、Web 以外の書き出し、手元のサーバ（`localhost`・`127.0.0.1`・`[::1]`）や `file://` で開いた Web 書き出しでは、`grush_backend_mock.gd` が使われる。`GRushMock` の static 変数で挙動を切り替える。
 
 ```gdscript
 GRushMock.signed_in = true
