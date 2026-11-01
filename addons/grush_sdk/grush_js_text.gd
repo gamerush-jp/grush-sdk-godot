@@ -10,6 +10,8 @@ extends RefCounted
 
 # value の中の文字列（辞書のキーを含む）の切れ端を U+FFFD に替えた値。切れ端が無ければ value をそのまま返し、
 # あれば元の値を変えずに写しを返す。深い入れ子でスタックを使い切らないよう、再帰でなく手元の配列で辿る。
+# 自分を含む値は辿り終えないので、grush_json_depth.gd で書き出せると確かめた値だけを渡す。
+# 型付きの配列と Packed*Array（文字列の配列）は、型の無い配列に写す。JSON にすると同じ形になる。
 static func sanitized(value: Variant) -> Variant:
 	if not _has_lone_surrogate(value):
 		return value

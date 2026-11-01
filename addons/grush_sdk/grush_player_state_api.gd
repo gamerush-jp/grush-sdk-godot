@@ -85,8 +85,9 @@ func get_mine() -> Dictionary:
 ## rating が黙って捨てられるので、書けたかは返る状態の `rating` で確かめる。
 ## NaN と無限大は送らずに invalidParams で返す。
 ## Godot は JSON にして渡し、応答から JSON として読み戻すので、Godot が扱えない payload（文字列や数を
-## 持つ配列と辞書が 1021 段を超えるもの、値が 50 万個を超えるもの）も、送らずに invalidParams で返す。
-## 文字列の中の対になっていないサロゲートは、U+FFFD に替えて送る。
+## 持つ配列と辞書が 1022 段を超えるもの、空の配列と辞書が 1023 段を超えるもの、一番外の値も含めて値が
+## 50 万個を超えるもの）も、送らずに invalidParams で返す。
+## 文字列の中の対になっていないサロゲートは、U+FFFD に替えて送る。切れ端だけが違うキーは同じキーになる。
 func set_mine(payload: Dictionary, base_revision: Variant = null, options: Dictionary = {}) -> Dictionary:
 	var params := {"payload": payload}
 	if base_revision != null:

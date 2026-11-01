@@ -107,7 +107,7 @@ func route(from: int, payload: PackedByteArray, channel: String, to: int) -> voi
 func _handle(method: String, params: Dictionary) -> Dictionary:
 	# Web 書き出しの SDK と同じく、Godot が JSON に書き出せない深さの値は送る前に断る（grush_json_depth.gd）。
 	if not JsonDepth.params_writable(method, params):
-		return Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.UNWRITABLE_MESSAGE)
+		return Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.unwritable_message(method))
 	# Web 書き出しの SDK と同じく、文字列の対になっていないサロゲートを U+FFFD に替えてから扱う（grush_js_text.gd）。
 	# そのため GameRush の「対になっていないサロゲートを含む」誤りは Godot からは届かず、モックも確かめない。
 	# GameRush の値の数と段数の誤りも、Godot が JSON に書き出せる範囲（grush_json_depth.gd）を上で先に確かめる

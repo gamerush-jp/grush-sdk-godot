@@ -50,7 +50,7 @@ func call_api(method: String, params: Dictionary, on_done: Callable) -> void:
 	# GameRush には壊れた後の文字列しか届かず、元の値が見えないため。
 	if not JsonDepth.params_writable(method, params):
 		on_done.call_deferred(
-			Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.UNWRITABLE_MESSAGE)
+			Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.unwritable_message(method))
 		)
 		return
 	# 文字列の対になっていないサロゲートは、JavaScript へ渡す前に U+FFFD に替える（grush_js_text.gd）。

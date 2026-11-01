@@ -1,6 +1,6 @@
 extends RefCounted
 
-# Godot の JSON.stringify で書き出して、応答から読み戻せる入れ子の深さを、書き出す前に確かめる。
+# Godot の JSON.stringify で書き出して、応答から読み戻せる入れ子の深さと値の数を、書き出す前に確かめる。
 #
 # JSON.stringify は値を1つ書くたびに1段深く呼び直し、JSON_MAX_LEVEL 段を超えると書き出しを打ち切って、`[...]` を含む
 # JSON でない文字列を返す（エラーは出すが、呼び出し元へは分からない）。そのまま GameRush へ渡すと壊れた値が届くので、
@@ -11,21 +11,22 @@ extends RefCounted
 # Godot 4.7・4.7.1・4.7.2 で、配列・辞書・その交互の入れ子について確かめた。Godot の JSON.parse_string も同じ段数まで
 # しか読めない。
 #
-# 書き込んだ値は、応答で何段か包まれて読み戻される。get_mine の状態は1段、get_many と sample の状態の一覧は2段、
-# ランキングの top と around_me の行の metadata は3段（ページ・行の配列・行）。包まれた値も JSON_MAX_LEVEL 段を
-# 超えると読めないので、書き込める段数は、いちばん深く包む3段を引いた MAX_LEVEL までにする。
+# 書き込んだ値は、応答で何段か包まれて読み戻される。公開プレイヤー状態は、get_mine の状態で1段、get_many と sample の
+# 状態の配列で2段。ランキングの top と around_me の行の metadata は3段（ページ・行の配列・行）。包まれた値も
+# JSON_MAX_LEVEL 段を超えると読めないので、書き込める段数は、メソッドごとにいちばん深く包む段数を引いた段数までにする。
 #
 # 検証は GameRush の側に置くのが原則だが、この上限は SDK に置く。壊れた JSON は SDK の中の JSON.stringify で
 # 生じ、GameRush には壊れた後の文字列しか届かず、元の値が見えないので、GameRush では正しく断れないため。
 
 # Godot の JSON.stringify と JSON.parse_string が扱える段数。
 const JSON_MAX_LEVEL := 1025
-# 読み戻すときに応答が値を包む、いちばん深い段数。
+# 読み戻すときに応答が値を包む、いちばん深い段数。公開プレイヤー状態の payload と、それ以外の値（ランキングの
+# metadata など）。
+const PLAYER_STATE_WRAP_LEVELS := 2
 const RESPONSE_WRAP_LEVELS := 3
-# 書き込める段数。
-const MAX_LEVEL := JSON_MAX_LEVEL - RESPONSE_WRAP_LEVELS
 
-const UNWRITABLE_MESSAGE := "The value is nested too deeply or too large for Godot to send and read back as JSON (1022 levels and 500000 values at most)."
+# 断るときの文言。段数と値の数の上限を差し込む。
+const UNWRITABLE_MESSAGE := "The value is nested too deeply or too large for Godot to send and read back as JSON (%d levels and %d values at most)."
 
 # params をまるごと JSON にして JavaScript へ渡すメソッド（grush_backend_web.gd の _invoke）。ほかのメソッドは
 # params の値を1つずつ渡すので、値ごとに数える。
@@ -39,32 +40,45 @@ const WHOLE_PARAMS_METHODS := [
 	"trade.list",
 ]
 
-# 数える値の数の上限。同じ配列や辞書を何度も指す値は、数えきれないほど大きくなりうる。数え切れない値は、
-# どこかに深すぎる枝が残っていても見落とすので、書き出せないとみなして断る。この数は GameRush が値を辿る数の
-# 上限と同じなので、ここで断る値は GameRush でも JSON でないとして断られる。
+# 数える値の数の上限。一番外の値も、中のスカラーも1つと数える。同じ配列や辞書を何度も指す値は、数えきれない
+# ほど大きくなりうる。数え切れない値は、どこかに深すぎる枝が残っていても見落とすので、書き出せないとみなして
+# 断る。この数は GameRush が値を辿る数の上限と同じなので、ここで断る値は GameRush でも JSON でないとして断られる。
 const MAX_VISITS := 500000
 
 
-# method を params で呼ぶときに JSON にする値を、Godot が書き出せるか。
+# method で書き込める段数。
+static func max_level_for(method: String) -> int:
+	if method == "playerState.setMine":
+		return JSON_MAX_LEVEL - PLAYER_STATE_WRAP_LEVELS
+	return JSON_MAX_LEVEL - RESPONSE_WRAP_LEVELS
+
+
+# method の値を断るときの文言。
+static func unwritable_message(method: String) -> String:
+	return UNWRITABLE_MESSAGE % [max_level_for(method), MAX_VISITS]
+
+
+# method を params で呼ぶときに JSON にする値を、送って読み戻せるか。
 static func params_writable(method: String, params: Dictionary) -> bool:
+	var max_level := max_level_for(method)
 	if method in WHOLE_PARAMS_METHODS:
-		return writable(params)
+		return writable(params, max_level)
 	for value in params.values():
-		if not writable(value):
+		if not writable(value, max_level):
 			return false
 	return true
 
 
-# value を JSON.stringify が書き出せるか。自分を含む値は段数が尽きないので、書き出せないとみなす。
-# 深い入れ子でスタックを使い切らないよう、再帰でなく手元の配列で数える。
-static func writable(value: Variant) -> bool:
+# value を max_level 段までに収まる JSON として書き出せるか。自分を含む値は段数が尽きないので、書き出せないと
+# みなす。深い入れ子でスタックを使い切らないよう、再帰でなく手元の配列で数える。
+static func writable(value: Variant, max_level: int = JSON_MAX_LEVEL - RESPONSE_WRAP_LEVELS) -> bool:
 	var nodes: Array = [value]
 	var levels: Array = [1]
 	var visits := 0
 	while not nodes.is_empty():
 		var current: Variant = nodes.pop_back()
 		var level: int = levels.pop_back()
-		if level > MAX_LEVEL:
+		if level > max_level:
 			return false
 		visits += 1
 		if visits > MAX_VISITS:

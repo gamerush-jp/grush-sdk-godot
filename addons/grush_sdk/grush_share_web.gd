@@ -14,14 +14,13 @@ func call_api(method: String, params: Dictionary, on_done: Callable) -> void:
 	# SDK で確かめる。壊れた JSON はこの SDK の中で生じ、GameRush には元の値が見えないため。
 	if not JsonDepth.writable(params.get("launchParams")):
 		on_done.call_deferred(
-			Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.UNWRITABLE_MESSAGE)
+			Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.unwritable_message(method))
 		)
 		return
 	var api := JavaScriptBridge.get_interface("GRushShare")
 	var promise: Variant = null
 	if api != null and method == "share.open":
-		# 文字列の対になっていないサロゲートは、JavaScript へ渡す前に U+FFFD に替える（grush_js_text.gd）。
-		promise = api.share(_options_of(JsText.sanitized(params)))
+		promise = api.share(_options_of(sanitized_params(params)))
 	elif api != null and method == "share.getAvailability":
 		promise = api.isAvailable()
 	if promise == null:
@@ -56,6 +55,18 @@ func _settle(token: int, method: String, on_done: Callable, ok: bool, args: Arra
 
 func _forget_pending(token: int) -> void:
 	_pending.erase(token)
+
+
+# 作者が書く文字列（本文と起動パラメータ）の対になっていないサロゲートを、JavaScript へ渡す前に U+FFFD に
+# 替えた params（grush_js_text.gd）。画像の base64 は SDK が作る ASCII なので、走査しない。
+static func sanitized_params(params: Dictionary) -> Dictionary:
+	var safe := params.duplicate()
+	var text: Variant = params.get("text")
+	if text is String:
+		safe["text"] = JsText.replaced(text)
+	if params.has("launchParams"):
+		safe["launchParams"] = JsText.sanitized(params["launchParams"])
+	return safe
 
 
 static func _options_of(params: Dictionary) -> JavaScriptObject:

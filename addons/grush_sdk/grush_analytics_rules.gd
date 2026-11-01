@@ -2,7 +2,9 @@ extends RefCounted
 
 # モックが分析イベントに掛ける、GameRush と同じ検査。GameRush と同じ順に確かめ、最初に当たった理由で拒む。
 # 通ったイベントは、GameRush へ渡すのと同じ形の Dictionary に作り直す。
-# Godot の String は孤立サロゲートを持てない（読み込みで U+FFFD に置き換わる）ので、その検査は無い。
+# Godot の String は、UTF-16 のバイト列から作った文字列（get_string_from_utf16 など）に対になっていない
+# サロゲートの code point を持ちうる。Web の SDK はそれを JSON のエスケープで GameRush へ渡し、GameRush は
+# 切れ端を含む文字列を拒むので、モックも同じく拒む。
 
 const KINDS := ["onboarding", "funnel", "custom", "economy"]
 const ECONOMY_FLOWS := ["source", "sink"]
@@ -58,6 +60,10 @@ static func sanitize(kind: String, params: Dictionary) -> Dictionary:
 ## 見えない文字だけなら空文字。
 static func line_text(value: Variant) -> Variant:
 	if not value is String:
+		return null
+	# GameRush は切れ端を含む文字列を拒む。空白への置き換えと前後の空白の除去は切れ端を残すので、先に確かめても
+	# 結果は同じ。
+	if _has_surrogate_code_point(value):
 		return null
 	_compile()
 	var text := _line_breaking.sub(value, " ", true)
@@ -175,6 +181,15 @@ static func _is_step(value: Variant) -> bool:
 		return value >= MIN_STEP and value <= MAX_STEP
 	if value is float:
 		return is_finite(value) and value == floorf(value) and value >= MIN_STEP and value <= MAX_STEP
+	return false
+
+
+# Godot の String は1文字を1つのコードポイントで持つので、U+D800〜U+DFFF の値が残るのは対になっていない切れ端だけ。
+static func _has_surrogate_code_point(text: String) -> bool:
+	for index in text.length():
+		var c := text.unicode_at(index)
+		if c >= 0xD800 and c <= 0xDFFF:
+			return true
 	return false
 
 
