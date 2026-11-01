@@ -84,8 +84,9 @@ func get_mine() -> Dictionary:
 ## 未満のランタイムでは rating を送らず、payload だけを書く。それ以上でも古い GameRush 本体では
 ## rating が黙って捨てられるので、書けたかは返る状態の `rating` で確かめる。
 ## NaN と無限大は送らずに invalidParams で返す。
-## Godot は JSON にして渡すので、Godot が書き出せない payload（文字列や数を持つ配列と辞書が
-## 1024 段を超えるもの、値が 50 万個を超えるもの）も、送らずに invalidParams で返す。
+## Godot は JSON にして渡し、応答から JSON として読み戻すので、Godot が扱えない payload（文字列や数を
+## 持つ配列と辞書が 1021 段を超えるもの、値が 50 万個を超えるもの）も、送らずに invalidParams で返す。
+## 文字列の中の対になっていないサロゲートは、U+FFFD に替えて送る。
 func set_mine(payload: Dictionary, base_revision: Variant = null, options: Dictionary = {}) -> Dictionary:
 	var params := {"payload": payload}
 	if base_revision != null:

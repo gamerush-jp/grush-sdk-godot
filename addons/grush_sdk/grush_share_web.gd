@@ -2,6 +2,7 @@ extends RefCounted
 
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
 const JsonDepth := preload("res://addons/grush_sdk/grush_json_depth.gd")
+const JsText := preload("res://addons/grush_sdk/grush_js_text.gd")
 
 var _pending: Dictionary = {}
 var _next_token := 1
@@ -19,7 +20,8 @@ func call_api(method: String, params: Dictionary, on_done: Callable) -> void:
 	var api := JavaScriptBridge.get_interface("GRushShare")
 	var promise: Variant = null
 	if api != null and method == "share.open":
-		promise = api.share(_options_of(params))
+		# 文字列の対になっていないサロゲートは、JavaScript へ渡す前に U+FFFD に替える（grush_js_text.gd）。
+		promise = api.share(_options_of(JsText.sanitized(params)))
 	elif api != null and method == "share.getAvailability":
 		promise = api.isAvailable()
 	if promise == null:

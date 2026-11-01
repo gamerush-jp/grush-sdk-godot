@@ -1,5 +1,7 @@
 extends RefCounted
 
+const JsText := preload("res://addons/grush_sdk/grush_js_text.gd")
+
 # ランタイムの GRushAnalytics へ同期で渡す。params は JSON の文字列にしてから JavaScript の JSON.parse で
 # オブジェクトにし、log(kind, params) に渡す。JavaScriptObject のプロパティへ直接書くと、StringName の値が
 # undefined になり、"script" などのキーが Object の側に横取りされるため。確かめるのはランタイムで、ここでは値を見ない。
@@ -22,7 +24,8 @@ func log_event(kind: String, params: Dictionary) -> bool:
 	var json := JavaScriptBridge.get_interface("JSON")
 	if api == null or json == null:
 		return false
-	var parsed: Variant = json.parse(json_of(params))
+	# 文字列の対になっていないサロゲートは、JavaScript へ渡す前に U+FFFD に替える（grush_js_text.gd）。
+	var parsed: Variant = json.parse(json_of(JsText.sanitized(params)))
 	if parsed == null:
 		return false
 	return api.log(kind, parsed) == true

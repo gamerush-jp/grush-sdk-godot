@@ -1,8 +1,8 @@
 extends RefCounted
 
-# Godot の JSON.stringify が書き出せる入れ子の深さを、書き出す前に確かめる。
+# Godot の JSON.stringify で書き出して、応答から読み戻せる入れ子の深さを、書き出す前に確かめる。
 #
-# JSON.stringify は値を1つ書くたびに1段深く呼び直し、MAX_LEVEL 段を超えると書き出しを打ち切って、`[...]` を含む
+# JSON.stringify は値を1つ書くたびに1段深く呼び直し、JSON_MAX_LEVEL 段を超えると書き出しを打ち切って、`[...]` を含む
 # JSON でない文字列を返す（エラーは出すが、呼び出し元へは分からない）。そのまま GameRush へ渡すと壊れた値が届くので、
 # SDK は書き出す前に段数を数え、超えた呼び出しは送らずに invalidParams で返す。モックも同じ上限で返す。
 #
@@ -11,12 +11,21 @@ extends RefCounted
 # Godot 4.7・4.7.1・4.7.2 で、配列・辞書・その交互の入れ子について確かめた。Godot の JSON.parse_string も同じ段数まで
 # しか読めない。
 #
+# 書き込んだ値は、応答で何段か包まれて読み戻される。get_mine の状態は1段、get_many と sample の状態の一覧は2段、
+# ランキングの top と around_me の行の metadata は3段（ページ・行の配列・行）。包まれた値も JSON_MAX_LEVEL 段を
+# 超えると読めないので、書き込める段数は、いちばん深く包む3段を引いた MAX_LEVEL までにする。
+#
 # 検証は GameRush の側に置くのが原則だが、この上限は SDK に置く。壊れた JSON は SDK の中の JSON.stringify で
 # 生じ、GameRush には壊れた後の文字列しか届かず、元の値が見えないので、GameRush では正しく断れないため。
 
-const MAX_LEVEL := 1025
+# Godot の JSON.stringify と JSON.parse_string が扱える段数。
+const JSON_MAX_LEVEL := 1025
+# 読み戻すときに応答が値を包む、いちばん深い段数。
+const RESPONSE_WRAP_LEVELS := 3
+# 書き込める段数。
+const MAX_LEVEL := JSON_MAX_LEVEL - RESPONSE_WRAP_LEVELS
 
-const UNWRITABLE_MESSAGE := "The value is nested too deeply or too large for Godot to write as JSON (1025 levels and 500000 values at most)."
+const UNWRITABLE_MESSAGE := "The value is nested too deeply or too large for Godot to send and read back as JSON (1022 levels and 500000 values at most)."
 
 # params をまるごと JSON にして JavaScript へ渡すメソッド（grush_backend_web.gd の _invoke）。ほかのメソッドは
 # params の値を1つずつ渡すので、値ごとに数える。

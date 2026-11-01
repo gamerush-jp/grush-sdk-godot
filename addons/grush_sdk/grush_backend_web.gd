@@ -2,6 +2,7 @@ extends RefCounted
 
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
 const JsonDepth := preload("res://addons/grush_sdk/grush_json_depth.gd")
+const JsText := preload("res://addons/grush_sdk/grush_js_text.gd")
 
 var _room: JavaScriptObject = null
 var _room_callbacks: Array = []
@@ -52,7 +53,8 @@ func call_api(method: String, params: Dictionary, on_done: Callable) -> void:
 			Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.UNWRITABLE_MESSAGE)
 		)
 		return
-	var promise: Variant = _invoke(method, params)
+	# 文字列の対になっていないサロゲートは、JavaScript へ渡す前に U+FFFD に替える（grush_js_text.gd）。
+	var promise: Variant = _invoke(method, JsText.sanitized(params))
 	if promise == null:
 		on_done.call_deferred(
 			Result.failure(Result.CODE_UNSUPPORTED, "GameRush does not expose %s here." % method)

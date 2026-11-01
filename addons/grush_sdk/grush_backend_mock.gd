@@ -3,6 +3,7 @@ extends RefCounted
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
 const MockPeer := preload("res://addons/grush_sdk/grush_mock_peer.gd")
 const JsonDepth := preload("res://addons/grush_sdk/grush_json_depth.gd")
+const JsText := preload("res://addons/grush_sdk/grush_js_text.gd")
 
 const STATE_PATH := GRushMock.STATE_PATH
 const STATE_SECTION := GRushMock.STATE_SECTION
@@ -11,8 +12,6 @@ const MOCK_PROTOCOL_VERSION := 10
 # GameRush と同じ mode と部屋コードの形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const MODE_PATTERN := "^[A-Za-z0-9._:-]{1,32}\\z"
 const ROOM_CODE_PATTERN := "^[A-Za-z0-9]{4,12}\\z"
-# GameRush が使う operationId の長さ（UTF-16 の単位）の上限。超えた値は無視される。
-const OPERATION_ID_MAX_LENGTH := 100
 
 var _members: Array = []
 var _outgoing_seq: Dictionary = {}
@@ -109,6 +108,11 @@ func _handle(method: String, params: Dictionary) -> Dictionary:
 	# Web 書き出しの SDK と同じく、Godot が JSON に書き出せない深さの値は送る前に断る（grush_json_depth.gd）。
 	if not JsonDepth.params_writable(method, params):
 		return Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.UNWRITABLE_MESSAGE)
+	# Web 書き出しの SDK と同じく、文字列の対になっていないサロゲートを U+FFFD に替えてから扱う（grush_js_text.gd）。
+	# そのため GameRush の「対になっていないサロゲートを含む」誤りは Godot からは届かず、モックも確かめない。
+	# GameRush の値の数と段数の誤りも、Godot が JSON に書き出せる範囲（grush_json_depth.gd）を上で先に確かめる
+	# ので届かない（値の数の上限は GameRush と同じで、段数の上限は GameRush より浅い）。
+	params = JsText.sanitized(params)
 	match method:
 		"player.getSelf":
 			return Result.ok(_player_wire(_consented))
@@ -183,10 +187,6 @@ func _set_player_state(params: Dictionary) -> Dictionary:
 		return Result.failure(
 			Result.CODE_INVALID_PARAMS, "Player state payload must be a JSON object."
 		)
-	payload = _as_delivered_json(payload)
-	var payload_error := _game_json_error(payload, "Player state payload")
-	if payload_error != "":
-		return Result.failure(Result.CODE_INVALID_PARAMS, payload_error)
 	# サーバと同じく、文字数ではなく UTF-8 のバイト数で数える。
 	if JSON.stringify(payload).to_utf8_buffer().size() > 4096:
 		return Result.failure(Result.CODE_INVALID_PARAMS, "Player state payload is too large.")
@@ -207,138 +207,6 @@ func _set_player_state(params: Dictionary) -> Dictionary:
 		"updatedAt": "",
 	}
 	return Result.ok({"state": _mock_player_state})
-
-
-# GameRush が JSON として保存できない値なら、断る文言を返す。保存できれば空文字。label は
-# "Player state payload" か "Metadata"。大きさは呼ぶ側が後で確かめる。
-# GameRush は辿る値の数・入れ子の段数（3000 段）・対になっていないサロゲートの順に確かめる。値の数と段数は、
-# Godot が JSON に書き出せる範囲（grush_json_depth.gd。値の数の上限は GameRush と同じで、段数は GameRush より
-# 浅い）を _handle が先に確かめるので、Godot からは GameRush のその2つの誤りに届かない。ここでは残りを確かめる。
-static func _game_json_error(value: Variant, label: String) -> String:
-	if _payload_has_lone_surrogate(value):
-		return "%s must not contain lone surrogates." % label
-	return ""
-
-
-# 深い入れ子でスタックを使い切らないよう、再帰でなく手元の配列で辿る。
-static func _payload_has_lone_surrogate(payload: Variant) -> bool:
-	var stack: Array = [payload]
-	while not stack.is_empty():
-		var current: Variant = stack.pop_back()
-		if current is String or current is StringName:
-			if _has_surrogate_code_point(str(current)):
-				return true
-		elif current is Dictionary:
-			# JSON にするときと同じく、文字列でないキーも文字列にして確かめる。
-			for key in current:
-				if _has_surrogate_code_point(str(key)):
-					return true
-				stack.append(current[key])
-		else:
-			stack.append_array(JsonDepth.children(current))
-	return false
-
-
-# Godot の String は1文字を1つのコードポイントで持つので、対のサロゲートは1つの文字に合わさっていて、
-# U+D800〜U+DFFF の値が残るのは対になっていない切れ端だけ。JSON.parse_string は切れ端のエスケープを
-# 読まずに失敗するが、UTF-16 のバイト列から作った文字列（get_string_from_utf16 など）には残る。
-static func _has_surrogate_code_point(text: String) -> bool:
-	for index in text.length():
-		var c := text.unicode_at(index)
-		if c >= 0xD800 and c <= 0xDFFF:
-			return true
-	return false
-
-
-# Web 書き出しの SDK が JavaScript へ渡した後に、GameRush へ届く形にする。Web の SDK は文字列と、JSON にした値の
-# 文字列を、UTF-8 にして JavaScript へ渡す。対になっていないサロゲートは 3 バイトの並び（U+D83D なら ED A0 BD）に
-# なる。JavaScript の側は、JS_TEXT_CHECKED_BYTES バイトを超える文字列を検査付きで読んでその 3 バイトを U+FFFD 3つに
-# 替え、それ以下の文字列は検査せずに読んで切れ端のまま渡す。Godot 4.7.1 の Web 書き出しを Chromium で動かして
-# 確かめた。モックも同じ形にし、切れ端のまま届く値は GameRush と同じく断り、U+FFFD に替わる値は受け付ける。
-const JS_TEXT_CHECKED_BYTES := 16
-
-
-# 文字列そのものを渡すとき（operationId）。
-static func _as_delivered_text(text: String) -> String:
-	if text.to_utf8_buffer().size() <= JS_TEXT_CHECKED_BYTES or not _has_surrogate_code_point(text):
-		return text
-	return _replace_surrogates(text)
-
-
-# JSON にして渡すとき（payload・metadata）。替えるなら、元の値を変えずに写しを返す。
-static func _as_delivered_json(value: Variant) -> Variant:
-	if not _payload_has_lone_surrogate(value):
-		return value
-	if JSON.stringify(value).to_utf8_buffer().size() <= JS_TEXT_CHECKED_BYTES:
-		return value
-	if value is String or value is StringName:
-		return _replace_surrogates(str(value))
-	# 深い入れ子でスタックを使い切らないよう、再帰でなく手元の配列で写す。
-	var root: Variant = _empty_like(value)
-	var pairs: Array = [[value, root]]
-	while not pairs.is_empty():
-		var pair: Array = pairs.pop_back()
-		var source: Variant = pair[0]
-		var target: Variant = pair[1]
-		if source is Dictionary:
-			for key in source:
-				var item: Variant = source[key]
-				var copied_key: Variant = _replace_surrogates(key) if key is String else key
-				target[copied_key] = _copied_item(item, pairs)
-		else:
-			for item in source:
-				target.append(_copied_item(item, pairs))
-	return root
-
-
-static func _copied_item(item: Variant, pairs: Array) -> Variant:
-	if item is String or item is StringName:
-		return _replace_surrogates(str(item))
-	if item is Dictionary or item is Array:
-		var copy: Variant = _empty_like(item)
-		pairs.append([item, copy])
-		return copy
-	if typeof(item) >= TYPE_PACKED_BYTE_ARRAY and typeof(item) < TYPE_MAX:
-		var items: Array = Array(item)
-		var copy_array: Array = []
-		pairs.append([items, copy_array])
-		return copy_array
-	return item
-
-
-static func _empty_like(value: Variant) -> Variant:
-	if value is Dictionary:
-		return {}
-	return []
-
-
-static func _replace_surrogates(text: String) -> String:
-	if not _has_surrogate_code_point(text):
-		return text
-	var parts := PackedStringArray()
-	for index in text.length():
-		var c := text.unicode_at(index)
-		if c >= 0xD800 and c <= 0xDFFF:
-			parts.append(char(0xFFFD).repeat(3))
-		else:
-			parts.append(text[index])
-	return "".join(parts)
-
-
-# GameRush と同じく、文字列でない・空・UTF-16 で 100 単位を超える operationId は無視し、使う値に
-# 対になっていないサロゲートがあれば断る。断るなら文言、通すなら空文字を返す。
-static func _operation_id_error(value: Variant) -> String:
-	if not (value is String):
-		return ""
-	var text: String = value
-	var units := 0
-	for index in text.length():
-		units += 2 if text.unicode_at(index) > 0xFFFF else 1
-	if units == 0 or units > OPERATION_ID_MAX_LENGTH:
-		return ""
-	if _has_surrogate_code_point(text):
-		return "Operation ID must not contain lone surrogates."
-	return ""
 
 
 # 投稿を受ける枠（宣言してあり、止めていない）の定義。無ければ null。list の結果は、投稿を受ける枠だけを並べる。
@@ -366,28 +234,16 @@ func _submit_score(params: Dictionary) -> Dictionary:
 	var key := str(params.get("key", ""))
 	if key == "":
 		return Result.failure(Result.CODE_INVALID_PARAMS, "A leaderboard key is required.")
-	# GameRush と同じく、枠を確かめた後に値、metadata、operationId の順に確かめ、値域はその後に確かめる。
-	# 投稿を受けない枠は、submit が GameRush と同じく先に断る。
+	# GameRush と同じく、枠を確かめた後に値を確かめ、値域はその後に確かめる。投稿を受けない枠は、submit が
+	# GameRush と同じく先に断る。metadata と operationId の GameRush の誤り（値の数・段数・対になっていない
+	# サロゲート）は、_handle の説明のとおり Godot からは届かない。
 	var definition: Variant = _playable_definition(key)
-	var metadata: Variant = params.get("metadata", null)
-	if metadata != null:
-		metadata = _as_delivered_json(metadata)
 	if definition != null:
 		var score_error := _score_error(params.get("value", 0.0), str(definition["valueType"]))
 		if score_error != "":
 			return Result.failure(Result.CODE_INVALID_PARAMS, score_error)
-		if metadata != null:
-			var metadata_error := _game_json_error(metadata, "Metadata")
-			if metadata_error != "":
-				return Result.failure(Result.CODE_INVALID_PARAMS, metadata_error)
-		var operation_id: Variant = params.get("operationId")
-		if operation_id is String:
-			operation_id = _as_delivered_text(operation_id)
-		var operation_error := _operation_id_error(operation_id)
-		if operation_error != "":
-			return Result.failure(Result.CODE_INVALID_PARAMS, operation_error)
 	var outcome := GRushMockLeaderboards.submit(
-		key, float(params.get("value", 0.0)), metadata, _local_pseudo_id()
+		key, float(params.get("value", 0.0)), params.get("metadata", null), _local_pseudo_id()
 	)
 	if outcome.has("error"):
 		return Result.failure(Result.CODE_INVALID_PARAMS, str(outcome["message"]))
