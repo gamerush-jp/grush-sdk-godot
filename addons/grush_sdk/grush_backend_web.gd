@@ -1,6 +1,7 @@
 extends RefCounted
 
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
+const JsonDepth := preload("res://addons/grush_sdk/grush_json_depth.gd")
 
 var _room: JavaScriptObject = null
 var _room_callbacks: Array = []
@@ -42,6 +43,12 @@ func set_net_event_handler(handler: Callable) -> void:
 func call_api(method: String, params: Dictionary, on_done: Callable) -> void:
 	if method == "net.leave" and _room == null:
 		on_done.call_deferred(Result.ok(null))
+		return
+	# Godot の JSON.stringify が書き出せない深さの値は、壊れた JSON を渡さずに断る（grush_json_depth.gd）。
+	if not JsonDepth.params_writable(method, params):
+		on_done.call_deferred(
+			Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.TOO_DEEP_MESSAGE)
+		)
 		return
 	var promise: Variant = _invoke(method, params)
 	if promise == null:

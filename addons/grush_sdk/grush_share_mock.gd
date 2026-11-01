@@ -1,6 +1,7 @@
 extends RefCounted
 
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
+const JsonDepth := preload("res://addons/grush_sdk/grush_json_depth.gd")
 
 # 共有に添える起動パラメータの、GameRush と同じ規則。読む側と違い、1つでも合わなければ共有ごと拒む。
 const LAUNCH_KEY_PATTERN := "^[A-Za-z0-9_-]{1,32}$"
@@ -18,6 +19,9 @@ func call_api(method: String, params: Dictionary, on_done: Callable) -> void:
 func _handle(method: String, params: Dictionary) -> Dictionary:
 	if method == "share.getAvailability":
 		return Result.ok(GRushMock.share_available)
+	# Web 書き出しの SDK と同じく、Godot が JSON に書き出せない深さの起動パラメータは送る前に断る。
+	if not JsonDepth.writable(params.get("launchParams")):
+		return Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.TOO_DEEP_MESSAGE)
 	# GameRush は親へ送る前に起動パラメータを確かめるので、共有できない環境でも invalidParams が先に返る。
 	if not _launch_params_valid(params.get("launchParams")):
 		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid launch params.")

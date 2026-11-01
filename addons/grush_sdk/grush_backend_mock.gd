@@ -2,6 +2,7 @@ extends RefCounted
 
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
 const MockPeer := preload("res://addons/grush_sdk/grush_mock_peer.gd")
+const JsonDepth := preload("res://addons/grush_sdk/grush_json_depth.gd")
 
 const STATE_PATH := GRushMock.STATE_PATH
 const STATE_SECTION := GRushMock.STATE_SECTION
@@ -10,9 +11,10 @@ const MOCK_PROTOCOL_VERSION := 10
 # GameRush と同じ mode と部屋コードの形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const MODE_PATTERN := "^[A-Za-z0-9._:-]{1,32}\\z"
 const ROOM_CODE_PATTERN := "^[A-Za-z0-9]{4,12}\\z"
-# GameRush が保存する公開プレイヤー状態の payload の、入れ子の段数と、辿る値の数の上限。
-const PAYLOAD_MAX_DEPTH := 3000
+# GameRush が JSON の値（公開プレイヤー状態の payload・ランキングの metadata）を辿る値の数の上限。
 const PAYLOAD_MAX_NODES := 500000
+# GameRush が使う operationId の長さ（UTF-16 の単位）の上限。超えた値は無視される。
+const OPERATION_ID_MAX_LENGTH := 100
 
 var _members: Array = []
 var _outgoing_seq: Dictionary = {}
@@ -106,6 +108,9 @@ func route(from: int, payload: PackedByteArray, channel: String, to: int) -> voi
 
 
 func _handle(method: String, params: Dictionary) -> Dictionary:
+	# Web 書き出しの SDK と同じく、Godot が JSON に書き出せない深さの値は送る前に断る（grush_json_depth.gd）。
+	if not JsonDepth.params_writable(method, params):
+		return Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.TOO_DEEP_MESSAGE)
 	match method:
 		"player.getSelf":
 			return Result.ok(_player_wire(_consented))
@@ -180,7 +185,7 @@ func _set_player_state(params: Dictionary) -> Dictionary:
 		return Result.failure(
 			Result.CODE_INVALID_PARAMS, "Player state payload must be a JSON object."
 		)
-	var payload_error := _player_state_payload_error(payload)
+	var payload_error := _game_json_error(payload, "Player state payload")
 	if payload_error != "":
 		return Result.failure(Result.CODE_INVALID_PARAMS, payload_error)
 	# サーバと同じく、文字数ではなく UTF-8 のバイト数で数える。
@@ -205,21 +210,21 @@ func _set_player_state(params: Dictionary) -> Dictionary:
 	return Result.ok({"state": _mock_player_state})
 
 
-# GameRush が JSON として保存できない payload なら、断る文言を返す。保存できれば空文字。
-# GameRush と同じく、辿る値の数、入れ子の段数、キーと文字列の対になっていないサロゲートを、
-# この順に、それぞれ payload の全体で確かめる。大きさは呼ぶ側が後で確かめる。
-static func _player_state_payload_error(payload: Variant) -> String:
-	if not _payload_walkable(payload):
-		return "Player state payload must be JSON."
-	if _payload_too_deep(payload):
-		return "Player state payload is nested too deeply."
-	if _payload_has_lone_surrogate(payload):
-		return "Player state payload must not contain lone surrogates."
+# GameRush が JSON として保存できない値なら、断る文言を返す。保存できれば空文字。label は
+# "Player state payload" か "Metadata"。GameRush と同じく、辿る値の数、キーと文字列の対になっていない
+# サロゲートを、この順に、それぞれ値の全体で確かめる。大きさは呼ぶ側が後で確かめる。
+# GameRush の入れ子の上限（3000 段）は、Godot が JSON に書き出せる深さ（grush_json_depth.gd）より深いので、
+# Godot からは届かない。そこで段数は _handle が Godot の上限で確かめ、ここでは確かめない。
+static func _game_json_error(value: Variant, label: String) -> String:
+	if not _payload_walkable(value):
+		return "%s must be JSON." % label
+	if _payload_has_lone_surrogate(value):
+		return "%s must not contain lone surrogates." % label
 	return ""
 
 
 # 辿る値はスカラーも1つと数え、別の枝から同じ配列や辞書を指すと、指すたびに数える（JSON にすると
-# 指すたびに書き出すため）。自分を含む値は数が尽きないので、ここで止まる。
+# 指すたびに書き出すため）。
 # どの検査も、深い入れ子でスタックを使い切らないよう、再帰でなく手元の配列で辿る。
 static func _payload_walkable(payload: Variant) -> bool:
 	var stack: Array = [payload]
@@ -229,25 +234,8 @@ static func _payload_walkable(payload: Variant) -> bool:
 		visited += 1
 		if visited > PAYLOAD_MAX_NODES:
 			return false
-		stack.append_array(_payload_children(current))
+		stack.append_array(JsonDepth.children(current))
 	return true
-
-
-# 段数は値を囲む配列と辞書の数で数える。スカラーは 0 段、`[]` と `{}` は 1 段。
-static func _payload_too_deep(payload: Variant) -> bool:
-	var nodes: Array = [payload]
-	var depths: Array = [0]
-	while not nodes.is_empty():
-		var current: Variant = nodes.pop_back()
-		var depth: int = depths.pop_back()
-		if not _is_payload_container(current):
-			continue
-		if depth + 1 > PAYLOAD_MAX_DEPTH:
-			return true
-		for child in _payload_children(current):
-			nodes.append(child)
-			depths.append(depth + 1)
-	return false
 
 
 static func _payload_has_lone_surrogate(payload: Variant) -> bool:
@@ -264,7 +252,7 @@ static func _payload_has_lone_surrogate(payload: Variant) -> bool:
 					return true
 				stack.append(current[key])
 		else:
-			stack.append_array(_payload_children(current))
+			stack.append_array(JsonDepth.children(current))
 	return false
 
 
@@ -279,29 +267,45 @@ static func _has_surrogate_code_point(text: String) -> bool:
 	return false
 
 
-# JSON.stringify は Packed*Array も配列として書き出すので、入れ子の1段として数える。
-static func _is_payload_container(value: Variant) -> bool:
-	return (
-		value is Array
-		or value is Dictionary
-		or (typeof(value) >= TYPE_PACKED_BYTE_ARRAY and typeof(value) < TYPE_MAX)
-	)
+# GameRush と同じく、文字列でない・空・UTF-16 で 100 単位を超える operationId は無視し、使う値に
+# 対になっていないサロゲートがあれば断る。断るなら文言、通すなら空文字を返す。
+static func _operation_id_error(value: Variant) -> String:
+	if not (value is String):
+		return ""
+	var text: String = value
+	var units := 0
+	for index in text.length():
+		units += 2 if text.unicode_at(index) > 0xFFFF else 1
+	if units == 0 or units > OPERATION_ID_MAX_LENGTH:
+		return ""
+	if _has_surrogate_code_point(text):
+		return "Operation ID must not contain lone surrogates."
+	return ""
 
 
-static func _payload_children(value: Variant) -> Array:
-	if value is Dictionary:
-		return value.values()
-	if value is Array:
-		return value
-	if _is_payload_container(value):
-		return Array(value)
-	return []
+# 投稿を受ける枠か（宣言してあり、止めていない）。list の結果は、投稿を受ける枠だけを並べる。
+static func _leaderboard_playable(key: String) -> bool:
+	for board in GRushMockLeaderboards.list_wire()["leaderboards"]:
+		if board["key"] == key:
+			return true
+	return false
 
 
 func _submit_score(params: Dictionary) -> Dictionary:
 	var key := str(params.get("key", ""))
 	if key == "":
 		return Result.failure(Result.CODE_INVALID_PARAMS, "A leaderboard key is required.")
+	# GameRush と同じく、枠を確かめた後に metadata、operationId の順に確かめ、値域はその後に確かめる。
+	# 投稿を受けない枠は、submit が GameRush と同じく先に断る。
+	if _leaderboard_playable(key):
+		var metadata: Variant = params.get("metadata", null)
+		if metadata != null:
+			var metadata_error := _game_json_error(metadata, "Metadata")
+			if metadata_error != "":
+				return Result.failure(Result.CODE_INVALID_PARAMS, metadata_error)
+		var operation_error := _operation_id_error(params.get("operationId"))
+		if operation_error != "":
+			return Result.failure(Result.CODE_INVALID_PARAMS, operation_error)
 	var outcome := GRushMockLeaderboards.submit(
 		key, float(params.get("value", 0.0)), params.get("metadata", null), _local_pseudo_id()
 	)

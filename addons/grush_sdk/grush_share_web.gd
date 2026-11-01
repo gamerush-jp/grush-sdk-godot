@@ -1,12 +1,20 @@
 extends RefCounted
 
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
+const JsonDepth := preload("res://addons/grush_sdk/grush_json_depth.gd")
 
 var _pending: Dictionary = {}
 var _next_token := 1
 
 
 func call_api(method: String, params: Dictionary, on_done: Callable) -> void:
+	# 起動パラメータは JSON.stringify を通して渡す。Godot が書き出せない深さなら、壊れた JSON を渡さずに断る。
+	# 起動パラメータを持たない呼び出しは、この判定を通る。
+	if not JsonDepth.writable(params.get("launchParams")):
+		on_done.call_deferred(
+			Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.TOO_DEEP_MESSAGE)
+		)
+		return
 	var api := JavaScriptBridge.get_interface("GRushShare")
 	var promise: Variant = null
 	if api != null and method == "share.open":
