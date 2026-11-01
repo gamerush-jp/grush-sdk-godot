@@ -10,10 +10,13 @@ extends RefCounted
 # 1024 段まで、空の配列と辞書は 1025 段まで書き出せる。Packed*Array は配列として書き出され、中の値が1段深くなる。
 # Godot 4.7・4.7.1・4.7.2 で、配列・辞書・その交互の入れ子について確かめた。Godot の JSON.parse_string も同じ段数まで
 # しか読めない。
+#
+# 検証は GameRush の側に置くのが原則だが、この上限は SDK に置く。壊れた JSON は SDK の中の JSON.stringify で
+# 生じ、GameRush には壊れた後の文字列しか届かず、元の値が見えないので、GameRush では正しく断れないため。
 
 const MAX_LEVEL := 1025
 
-const TOO_DEEP_MESSAGE := "The value is nested too deeply for Godot to write as JSON (1025 levels at most)."
+const UNWRITABLE_MESSAGE := "The value is nested too deeply or too large for Godot to write as JSON (1025 levels and 500000 values at most)."
 
 # params をまるごと JSON にして JavaScript へ渡すメソッド（grush_backend_web.gd の _invoke）。ほかのメソッドは
 # params の値を1つずつ渡すので、値ごとに数える。
@@ -27,9 +30,9 @@ const WHOLE_PARAMS_METHODS := [
 	"trade.list",
 ]
 
-# 数える値の数の上限。同じ配列や辞書を何度も指す値は、数えきれないほど大きくなりうる。そこで止めたときは
-# 書き出せるとみなし、GameRush と同じ値の数の検査（モック）や JSON.stringify に任せる。深すぎる値は、
-# 手元の stack を後ろから取り出すので、ここまで数える前に見つかる。
+# 数える値の数の上限。同じ配列や辞書を何度も指す値は、数えきれないほど大きくなりうる。数え切れない値は、
+# どこかに深すぎる枝が残っていても見落とすので、書き出せないとみなして断る。この数は GameRush が値を辿る数の
+# 上限と同じなので、ここで断る値は GameRush でも JSON でないとして断られる。
 const MAX_VISITS := 500000
 
 
@@ -56,7 +59,7 @@ static func writable(value: Variant) -> bool:
 			return false
 		visits += 1
 		if visits > MAX_VISITS:
-			return true
+			return false
 		for child in children(current):
 			nodes.append(child)
 			levels.append(level + 1)

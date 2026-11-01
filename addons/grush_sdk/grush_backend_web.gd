@@ -44,10 +44,12 @@ func call_api(method: String, params: Dictionary, on_done: Callable) -> void:
 	if method == "net.leave" and _room == null:
 		on_done.call_deferred(Result.ok(null))
 		return
-	# Godot の JSON.stringify が書き出せない深さの値は、壊れた JSON を渡さずに断る（grush_json_depth.gd）。
+	# Godot の JSON.stringify が書き出せない値は、壊れた JSON を渡さずに断る（grush_json_depth.gd）。
+	# 検証は GameRush の側に置くのが原則だが、これは SDK で確かめる。壊れた JSON はこの SDK の中で生じ、
+	# GameRush には壊れた後の文字列しか届かず、元の値が見えないため。
 	if not JsonDepth.params_writable(method, params):
 		on_done.call_deferred(
-			Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.TOO_DEEP_MESSAGE)
+			Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.UNWRITABLE_MESSAGE)
 		)
 		return
 	var promise: Variant = _invoke(method, params)

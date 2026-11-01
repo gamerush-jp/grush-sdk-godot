@@ -21,7 +21,7 @@ func _handle(method: String, params: Dictionary) -> Dictionary:
 		return Result.ok(GRushMock.share_available)
 	# Web 書き出しの SDK と同じく、Godot が JSON に書き出せない深さの起動パラメータは送る前に断る。
 	if not JsonDepth.writable(params.get("launchParams")):
-		return Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.TOO_DEEP_MESSAGE)
+		return Result.failure(Result.CODE_INVALID_PARAMS, JsonDepth.UNWRITABLE_MESSAGE)
 	# GameRush は親へ送る前に起動パラメータを確かめるので、共有できない環境でも invalidParams が先に返る。
 	if not _launch_params_valid(params.get("launchParams")):
 		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid launch params.")
