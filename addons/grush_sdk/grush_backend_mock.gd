@@ -10,6 +10,9 @@ const MOCK_PROTOCOL_VERSION := 10
 # GameRush と同じ mode と部屋コードの形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const MODE_PATTERN := "^[A-Za-z0-9._:-]{1,32}\\z"
 const ROOM_CODE_PATTERN := "^[A-Za-z0-9]{4,12}\\z"
+# GameRush が保存する公開プレイヤー状態の payload の、入れ子の段数と、辿る値の数の上限。
+const PAYLOAD_MAX_DEPTH := 3000
+const PAYLOAD_MAX_NODES := 500000
 
 var _members: Array = []
 var _outgoing_seq: Dictionary = {}
@@ -177,6 +180,9 @@ func _set_player_state(params: Dictionary) -> Dictionary:
 		return Result.failure(
 			Result.CODE_INVALID_PARAMS, "Player state payload must be a JSON object."
 		)
+	var payload_error := _player_state_payload_error(payload)
+	if payload_error != "":
+		return Result.failure(Result.CODE_INVALID_PARAMS, payload_error)
 	# サーバと同じく、文字数ではなく UTF-8 のバイト数で数える。
 	if JSON.stringify(payload).to_utf8_buffer().size() > 4096:
 		return Result.failure(Result.CODE_INVALID_PARAMS, "Player state payload is too large.")
@@ -197,6 +203,99 @@ func _set_player_state(params: Dictionary) -> Dictionary:
 		"updatedAt": "",
 	}
 	return Result.ok({"state": _mock_player_state})
+
+
+# GameRush が JSON として保存できない payload なら、断る文言を返す。保存できれば空文字。
+# GameRush と同じく、辿る値の数、入れ子の段数、キーと文字列の対になっていないサロゲートを、
+# この順に、それぞれ payload の全体で確かめる。大きさは呼ぶ側が後で確かめる。
+static func _player_state_payload_error(payload: Variant) -> String:
+	if not _payload_walkable(payload):
+		return "Player state payload must be JSON."
+	if _payload_too_deep(payload):
+		return "Player state payload is nested too deeply."
+	if _payload_has_lone_surrogate(payload):
+		return "Player state payload must not contain lone surrogates."
+	return ""
+
+
+# 辿る値はスカラーも1つと数え、別の枝から同じ配列や辞書を指すと、指すたびに数える（JSON にすると
+# 指すたびに書き出すため）。自分を含む値は数が尽きないので、ここで止まる。
+# どの検査も、深い入れ子でスタックを使い切らないよう、再帰でなく手元の配列で辿る。
+static func _payload_walkable(payload: Variant) -> bool:
+	var stack: Array = [payload]
+	var visited := 0
+	while not stack.is_empty():
+		var current: Variant = stack.pop_back()
+		visited += 1
+		if visited > PAYLOAD_MAX_NODES:
+			return false
+		stack.append_array(_payload_children(current))
+	return true
+
+
+# 段数は値を囲む配列と辞書の数で数える。スカラーは 0 段、`[]` と `{}` は 1 段。
+static func _payload_too_deep(payload: Variant) -> bool:
+	var nodes: Array = [payload]
+	var depths: Array = [0]
+	while not nodes.is_empty():
+		var current: Variant = nodes.pop_back()
+		var depth: int = depths.pop_back()
+		if not _is_payload_container(current):
+			continue
+		if depth + 1 > PAYLOAD_MAX_DEPTH:
+			return true
+		for child in _payload_children(current):
+			nodes.append(child)
+			depths.append(depth + 1)
+	return false
+
+
+static func _payload_has_lone_surrogate(payload: Variant) -> bool:
+	var stack: Array = [payload]
+	while not stack.is_empty():
+		var current: Variant = stack.pop_back()
+		if current is String or current is StringName:
+			if _has_surrogate_code_point(str(current)):
+				return true
+		elif current is Dictionary:
+			# JSON にするときと同じく、文字列でないキーも文字列にして確かめる。
+			for key in current:
+				if _has_surrogate_code_point(str(key)):
+					return true
+				stack.append(current[key])
+		else:
+			stack.append_array(_payload_children(current))
+	return false
+
+
+# Godot の String は1文字を1つのコードポイントで持つので、対のサロゲートは1つの文字に合わさっていて、
+# U+D800〜U+DFFF の値が残るのは対になっていない切れ端だけ。JSON.parse_string は切れ端のエスケープを
+# 読まずに失敗するが、UTF-16 のバイト列から作った文字列（get_string_from_utf16 など）には残る。
+static func _has_surrogate_code_point(text: String) -> bool:
+	for index in text.length():
+		var c := text.unicode_at(index)
+		if c >= 0xD800 and c <= 0xDFFF:
+			return true
+	return false
+
+
+# JSON.stringify は Packed*Array も配列として書き出すので、入れ子の1段として数える。
+static func _is_payload_container(value: Variant) -> bool:
+	return (
+		value is Array
+		or value is Dictionary
+		or (typeof(value) >= TYPE_PACKED_BYTE_ARRAY and typeof(value) < TYPE_MAX)
+	)
+
+
+static func _payload_children(value: Variant) -> Array:
+	if value is Dictionary:
+		return value.values()
+	if value is Array:
+		return value
+	if _is_payload_container(value):
+		return Array(value)
+	return []
 
 
 func _submit_score(params: Dictionary) -> Dictionary:

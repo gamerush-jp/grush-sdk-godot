@@ -67,8 +67,10 @@ static func parse(text: String) -> Dictionary:
 
 
 static func _parse_text(text: String) -> Dictionary:
+	var marked := _mark_lone_surrogates(text)
+	var marker: int = marked["marker"]
 	var json := JSON.new()
-	if json.parse(text) != OK or typeof(json.data) != TYPE_DICTIONARY:
+	if json.parse(marked["text"]) != OK or typeof(json.data) != TYPE_DICTIONARY:
 		return _not_object()
 	var root: Dictionary = json.data
 	for field in root:
@@ -88,7 +90,7 @@ static func _parse_text(text: String) -> Dictionary:
 	var entries: Array = []
 	var seen := {}
 	for index in list.size():
-		var read := _read_entry(list[index], "leaderboards[%d]" % index, seen)
+		var read := _read_entry(list[index], "leaderboards[%d]" % index, seen, marker)
 		if read.has("error"):
 			return read
 		entries.append(read)
@@ -96,7 +98,8 @@ static func _parse_text(text: String) -> Dictionary:
 
 
 # GameRush と同じ順に確かめる。誤りが複数あっても、アップロードと同じ項目を返す。
-static func _read_entry(item: Variant, at: String, seen: Dictionary) -> Dictionary:
+# marker は、対になっていないサロゲートの代わりに置いた文字（_mark_lone_surrogates）。
+static func _read_entry(item: Variant, at: String, seen: Dictionary, marker: int) -> Dictionary:
 	if typeof(item) != TYPE_DICTIONARY:
 		return _invalid(at)
 	for field in item:
@@ -116,7 +119,7 @@ static func _read_entry(item: Variant, at: String, seen: Dictionary) -> Dictiona
 		var numeric := typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT
 		if not numeric or not is_finite(float(value)):
 			return _invalid("%s.%s" % [at, field])
-	var title := _collapse_title(item.get("title", null))
+	var title := _collapse_title(item.get("title", null), marker)
 	var title_length := _utf16_length(title)
 	if title_length < 1 or title_length > MAX_TITLE_LENGTH:
 		return _invalid(at + ".title")
@@ -163,7 +166,9 @@ static func _is_key(key: String) -> bool:
 
 
 # 改行と制御文字を空白にしてから前後を詰める。GameRush が保存するタイトルと同じ形にする。
-static func _collapse_title(value: Variant) -> String:
+# GameRush と同じく、対になっていないサロゲート（marker を置いた所）を先に除く。除いた切れ端の両側の
+# 制御文字は、1つの空白にまとまる。
+static func _collapse_title(value: Variant, marker: int) -> String:
 	if typeof(value) != TYPE_STRING:
 		return ""
 	var text: String = value
@@ -171,6 +176,8 @@ static func _collapse_title(value: Variant) -> String:
 	var in_run := false
 	for index in text.length():
 		var c := text.unicode_at(index)
+		if c == marker or (c >= 0xD800 and c <= 0xDFFF):
+			continue
 		var breaking := (
 			c < 0x20
 			or (c >= 0x7F and c <= 0x9F)
@@ -193,6 +200,82 @@ static func _collapse_title(value: Variant) -> String:
 	while end > start and _is_trimmed(collapsed.unicode_at(end - 1)):
 		end -= 1
 	return collapsed.substr(start, end - start)
+
+
+# GameRush は JSON の文字列の中の、対になっていないサロゲートのエスケープ（`\ud83d` など）を
+# 切れ端の1文字として読む。Godot の JSON はそれを読めずに失敗するので、読む前に、ファイルに無い
+# 非文字（U+FDD0〜U+FDEF）へ置き換える。置き換えた文字はタイトルから除き、key や sort などの
+# 決まった値には当たらないので、GameRush と同じく誤りになる。知らない項目の名前に入っていたときは、
+# 誤りの文言に切れ端の代わりにこの文字が出る。
+# {"text": 置き換えた JSON, "marker": 置いた文字のコードポイント} を返す。置き換えが無ければ marker は -1。
+# 32 個の非文字がすべてファイルにあるときは置き換えず、GameRush と違って JSON として読めない誤りになる。
+static func _mark_lone_surrogates(text: String) -> Dictionary:
+	var marker := -1
+	for candidate in range(0xFDD0, 0xFDF0):
+		if text.find(char(candidate)) < 0 and text.findn("\\u%04x" % candidate) < 0:
+			marker = candidate
+			break
+	if marker < 0:
+		return {"text": text, "marker": -1}
+	var parts := PackedStringArray()
+	var copied := 0
+	var index := 0
+	var in_string := false
+	var length := text.length()
+	while index < length:
+		var c := text.unicode_at(index)
+		if not in_string:
+			in_string = c == 0x22
+			index += 1
+			continue
+		if c == 0x22:
+			in_string = false
+			index += 1
+			continue
+		var skip := 1
+		var lone := c >= 0xD800 and c <= 0xDFFF
+		if c == 0x5C:
+			var unit := _escaped_unit(text, index)
+			skip = 2 if unit < 0 else 6
+			if unit >= 0xD800 and unit <= 0xDBFF:
+				var next := _escaped_unit(text, index + 6)
+				if next >= 0xDC00 and next <= 0xDFFF:
+					skip = 12
+				else:
+					lone = true
+			elif unit >= 0xDC00 and unit <= 0xDFFF:
+				lone = true
+		if lone:
+			parts.append(text.substr(copied, index - copied))
+			parts.append(char(marker))
+			copied = index + skip
+		index += skip
+	if parts.is_empty():
+		return {"text": text, "marker": -1}
+	parts.append(text.substr(copied))
+	return {"text": "".join(parts), "marker": marker}
+
+
+# index から `\uXXXX` のエスケープがあれば、その符号単位の値を返す。無ければ -1。
+static func _escaped_unit(text: String, index: int) -> int:
+	if index + 6 > text.length() or text.unicode_at(index) != 0x5C:
+		return -1
+	if text.unicode_at(index + 1) != 0x75:
+		return -1
+	var value := 0
+	for offset in range(2, 6):
+		var c := text.unicode_at(index + offset)
+		var digit := -1
+		if c >= 0x30 and c <= 0x39:
+			digit = c - 0x30
+		elif c >= 0x41 and c <= 0x46:
+			digit = c - 0x41 + 10
+		elif c >= 0x61 and c <= 0x66:
+			digit = c - 0x61 + 10
+		if digit < 0:
+			return -1
+		value = value * 16 + digit
+	return value
 
 
 # GameRush の trim が外す空白（ECMAScript の WhiteSpace と LineTerminator）。strip_edges は
