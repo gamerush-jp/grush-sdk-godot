@@ -18,7 +18,7 @@ func _init(hub: RefCounted) -> void:
 func send(payload: PackedByteArray, channel := "reliable", to := -1) -> void:
 	var hub: Variant = _hub.get_ref()
 	if hub != null:
-		hub.route(index, payload, channel, to)
+		hub.route_from_peer(self, payload, channel, to)
 
 
 func deliver(message: Dictionary) -> void:

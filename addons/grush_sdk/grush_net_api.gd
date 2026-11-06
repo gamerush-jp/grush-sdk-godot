@@ -16,7 +16,11 @@ func _init(grush: Node, backend: RefCounted) -> void:
 	_backend = backend
 
 
-func join(mode := "default", room_code := "") -> Dictionary:
+## 部屋へ入る。[param target_room_size] は部屋の目安の人数で、1〜8 の整数。渡すと、新しい部屋から最大 8 部屋を
+## 確かめ、目安に届いていない部屋のうち最も人数の少ない部屋へ入る。確かめた部屋がどれも目安以上なら新しい部屋が
+## できる。範囲の外は invalidParams。0 は未指定で、目安を送らない。[param room_code] で部屋を指定したときは、指定した部屋へ入る。
+## 目安を知らない版の GameRush では無視され、ゲームからは見分けられない。
+func join(mode := "default", room_code := "", target_room_size := 0) -> Dictionary:
 	if not _grush.is_available():
 		return Result.unsupported()
 	_bind()
@@ -27,6 +31,8 @@ func join(mode := "default", room_code := "") -> Dictionary:
 	var params := {"mode": mode}
 	if room_code != "":
 		params["roomCode"] = room_code
+	if target_room_size != 0:
+		params["targetRoomSize"] = target_room_size
 	var pending := Call.new()
 	_backend.call_api("net.join", params, func(result: Dictionary) -> void: pending.resolve(result))
 	var response: Dictionary = await pending.completed

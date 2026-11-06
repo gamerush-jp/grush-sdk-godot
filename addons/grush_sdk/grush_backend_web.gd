@@ -403,4 +403,6 @@ static func _to_js(params: Dictionary) -> JavaScriptObject:
 	object.mode = params.get("mode", "default")
 	if params.has("roomCode"):
 		object.roomCode = params["roomCode"]
+	if params.has("targetRoomSize"):
+		object.targetRoomSize = params["targetRoomSize"]
 	return object

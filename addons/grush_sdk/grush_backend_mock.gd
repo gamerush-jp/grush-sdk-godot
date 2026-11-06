@@ -12,12 +12,15 @@ const MOCK_PROTOCOL_VERSION := 10
 # GameRush と同じ mode と部屋コードの形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const MODE_PATTERN := "^[A-Za-z0-9._:-]{1,32}\\z"
 const ROOM_CODE_PATTERN := "^[A-Za-z0-9]{4,12}\\z"
+# GameRush の定員。モックの GameRush と同じ検査なので、GRushMock.max_peers には合わせない。
+const MAX_TARGET_ROOM_SIZE := 8
 
 var _members: Array = []
 var _outgoing_seq: Dictionary = {}
 var _local_index := -1
 var _consented := false
 var _room_code := ""
+var _room_serial := 1
 var _net_handler := Callable()
 var _random := RandomNumberGenerator.new()
 var _mode_pattern := RegEx.create_from_string(MODE_PATTERN)
@@ -69,6 +72,9 @@ func add_peer(display_name: String, avatar_url: Variant = null) -> RefCounted:
 func remove_peer(peer: RefCounted) -> void:
 	if peer == null:
 		return
+	# 新しい部屋へ移って外れた相手の index は、新しい部屋の別の相手が使っていることがある。
+	if not _members.any(func(entry: Dictionary) -> bool: return entry.get("peer") == peer):
+		return
 	_members = _members.filter(func(entry: Dictionary) -> bool: return entry.get("peer") != peer)
 	_outgoing_seq.erase(peer.index)
 	_announce("peerleave", peer.index, {})
@@ -79,6 +85,12 @@ func raise_room_error(code: String, message: String) -> bool:
 		return false
 	_deliver_local.call_deferred({"kind": "error", "code": code, "message": message})
 	return true
+
+
+# 部屋に残っている相手の送信だけを通す。外された相手は前の部屋に残った扱いになる。
+func route_from_peer(peer: RefCounted, payload: PackedByteArray, channel: String, to: int) -> void:
+	if _members.any(func(entry: Dictionary) -> bool: return entry.get("peer") == peer):
+		route(peer.index, payload, channel, to)
 
 
 func route(from: int, payload: PackedByteArray, channel: String, to: int) -> void:
@@ -293,6 +305,12 @@ func _join(params: Dictionary) -> Dictionary:
 	var requested: Variant = params.get("roomCode")
 	if requested != null and (not (requested is String) or _room_code_pattern.search(requested) == null):
 		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid room code.")
+	var has_target := params.has("targetRoomSize")
+	var target: Variant = params.get("targetRoomSize")
+	if has_target and not _is_target_room_size(target):
+		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid target room size.")
+	if requested == null and has_target and _members.size() >= mini(int(target), GRushMock.max_peers):
+		_start_next_room()
 	var index := _next_free_index()
 	if index < 0:
 		return Result.failure(Result.CODE_UNAVAILABLE, "The mock room is full.")
@@ -317,6 +335,22 @@ func _join(params: Dictionary) -> Dictionary:
 		"transport": "ws",
 		"serverTimeMs": Time.get_unix_time_from_system() * 1000.0,
 	})
+
+
+# JSON を通った数は float で届くので、値が整数なら通す。
+static func _is_target_room_size(value: Variant) -> bool:
+	if not (value is int or value is float):
+		return false
+	return value == floorf(value) and value >= 1 and value <= MAX_TARGET_ROOM_SIZE
+
+
+# モックの部屋は1つなので、部屋が目安に届いていれば、どの部屋も目安以上だったことにする。
+# ゲームは新しい部屋へ移り、add_peer で作った相手は前の部屋に残る。
+func _start_next_room() -> void:
+	_members.clear()
+	_outgoing_seq.clear()
+	_room_serial += 1
+	_room_code = "MOCKROOM%d" % _room_serial
 
 
 func _leave() -> void:
