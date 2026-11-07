@@ -110,6 +110,8 @@ func set_mine(payload: Dictionary, base_revision: Variant = null, options: Dicti
 ## **運営が hidden にしたものは返らない。**
 ## [signal preview_received] に接続していないと、GameRush は他プレイヤーの状態を previewRequired で断ることがある。
 func get_many(pseudo_ids: Array) -> Dictionary:
+	# 同じフレームで接続したばかりでも、読む前に登録を揃える。登録の無い読み取りは GameRush に断られるため。
+	_sync_preview_watch()
 	var response := await _call("playerState.get", {"pseudoIds": pseudo_ids})
 	if not response["ok"]:
 		return response
@@ -129,6 +131,8 @@ func get_many(pseudo_ids: Array) -> Dictionary:
 func sample(options: Dictionary = {}) -> Dictionary:
 	if _grush.protocol_version() < MATCHMAKING_PROTOCOL_VERSION:
 		return Result.unsupported()
+	# get_many と同じく、読む前に登録を揃える。
+	_sync_preview_watch()
 	var params := {}
 	if options.has("count"):
 		params["count"] = int(options["count"])
