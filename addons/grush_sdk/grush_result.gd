@@ -8,6 +8,8 @@ const CODE_RATE_LIMITED := "rateLimited"
 const CODE_SIGN_IN_REQUIRED := "signInRequired"
 const CODE_CONSENT_DECLINED := "consentDeclined"
 const CODE_INVALID_PARAMS := "invalidParams"
+## 確認用の表示（[code]GRush.player_state.preview_received[/code]）を購読していないので、他のプレイヤーの公開プレイヤー状態を読めない。
+const CODE_PREVIEW_REQUIRED := "previewRequired"
 const CODE_INTERNAL := "internal"
 
 
@@ -30,6 +32,8 @@ static func map_code(code: String) -> String:
 		CODE_UNAVAILABLE, CODE_TIMEOUT, CODE_RATE_LIMITED:
 			return code
 		CODE_SIGN_IN_REQUIRED, CODE_CONSENT_DECLINED, CODE_INVALID_PARAMS:
+			return code
+		CODE_PREVIEW_REQUIRED:
 			return code
 		_:
 			return CODE_INTERNAL

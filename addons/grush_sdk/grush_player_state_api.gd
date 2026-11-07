@@ -108,6 +108,7 @@ func set_mine(payload: Dictionary, base_revision: Variant = null, options: Dicti
 
 ## 他プレイヤーの状態を疑似IDで引く（1回 50 件まで）。
 ## **運営が hidden にしたものは返らない。**
+## [signal preview_received] に接続していないと、GameRush は他プレイヤーの状態を previewRequired で断ることがある。
 func get_many(pseudo_ids: Array) -> Dictionary:
 	var response := await _call("playerState.get", {"pseudoIds": pseudo_ids})
 	if not response["ok"]:
@@ -124,6 +125,7 @@ func get_many(pseudo_ids: Array) -> Dictionary:
 ## 返らず、名前も返らない。[param options] は `count`（1〜20、既定 10）と、一緒に渡す
 ## `min_rating` / `max_rating`（範囲を渡すと rating の無い状態は返らない）。
 ## 版数が [constant MATCHMAKING_PROTOCOL_VERSION] 未満のランタイムでは unsupported。
+## [signal preview_received] に接続していないと、GameRush は previewRequired で断ることがある。
 func sample(options: Dictionary = {}) -> Dictionary:
 	if _grush.protocol_version() < MATCHMAKING_PROTOCOL_VERSION:
 		return Result.unsupported()
