@@ -187,6 +187,17 @@ const SHIM_JS := """
   window.__grushSdkShim = {
     playerStateGet: function (ids) {
       return window.GRushPlayerState ? window.GRushPlayerState.get(ids) : null;
+    },
+    bytesToBase64: function (value) {
+      var bytes = null;
+      if (value instanceof ArrayBuffer) bytes = new Uint8Array(value);
+      else if (ArrayBuffer.isView(value)) bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+      if (!bytes) return null;
+      var binary = "";
+      for (var i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      return btoa(binary);
     }
   };
 })();
@@ -345,8 +356,8 @@ func _message_of_js(args: Array) -> Dictionary:
 	var message: Variant = args[0]
 	var payload := PackedByteArray()
 	var raw: Variant = message["payload"]
-	if raw != null and JavaScriptBridge.is_js_buffer(raw):
-		payload = JavaScriptBridge.js_buffer_to_packed_byte_array(raw)
+	if raw != null:
+		payload = _bytes_of_js(raw)
 	return {
 		"kind": "message",
 		"from": int(message["from"]),
@@ -354,6 +365,20 @@ func _message_of_js(args: Array) -> Dictionary:
 		"seq": int(message["seq"]),
 		"payload": payload,
 	}
+
+
+# JavaScriptBridge.is_js_buffer と js_buffer_to_packed_byte_array は Godot 4.4 で入った。名前で直接呼ぶと
+# 4.3 ではスクリプト全体の解析が失敗して GRush が読み込めないので、あるときだけ名前を介して呼ぶ。
+# 無い版では、JS 側で Base64 にしてから受け取る（送るときの sendBase64 と同じ理由）。
+static func _bytes_of_js(raw: Variant) -> PackedByteArray:
+	if JavaScriptBridge.has_method("is_js_buffer"):
+		if JavaScriptBridge.call("is_js_buffer", raw):
+			return JavaScriptBridge.call("js_buffer_to_packed_byte_array", raw)
+		return PackedByteArray()
+	var encoded: Variant = _shim().bytesToBase64(raw)
+	if encoded == null or str(encoded) == "":
+		return PackedByteArray()
+	return Marshalls.base64_to_raw(str(encoded))
 
 
 static func _peer_of(peer: Variant) -> Dictionary:

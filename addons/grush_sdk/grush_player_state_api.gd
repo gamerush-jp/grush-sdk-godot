@@ -170,7 +170,7 @@ func report(pseudo_id: String) -> Dictionary:
 
 
 # ランタイムへの登録を、preview_received に接続があるときだけにそろえる。Godot の signal は接続と切断を
-# 知らせないので、フレームごとに has_connections で確かめる。
+# 知らせないので、フレームごとに接続の有無を確かめる。
 # - 接続が無いうちに登録すると、ランタイムは1回だけ渡す状態を SDK に渡し、受け手がいないまま捨てることになる。
 #   ランタイムは登録より先に来た状態も登録したときに渡すので、接続ができてから登録すれば取りこぼさない。
 # - 接続が無くなったら登録を外す。外さないと、その後に来た状態を受け手がいないまま受け取ったことにしてしまう。
@@ -184,7 +184,8 @@ func _sync_preview_watch() -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree != null and not tree.process_frame.is_connected(_sync_preview_watch):
 		tree.process_frame.connect(_sync_preview_watch)
-	var connected := has_connections("preview_received")
+	# Object.has_connections は Godot 4.4 からなので、4.3 にもある接続の一覧で確かめる。
+	var connected := not get_signal_connection_list("preview_received").is_empty()
 	if connected == _preview_watching:
 		return
 	_preview_watching = connected
