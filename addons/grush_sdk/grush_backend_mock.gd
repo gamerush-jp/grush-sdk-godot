@@ -4,6 +4,7 @@ const Result := preload("res://addons/grush_sdk/grush_result.gd")
 const MockPeer := preload("res://addons/grush_sdk/grush_mock_peer.gd")
 const JsonDepth := preload("res://addons/grush_sdk/grush_json_depth.gd")
 const JsText := preload("res://addons/grush_sdk/grush_js_text.gd")
+const Manifest := preload("res://addons/grush_sdk/grush_mock_manifest.gd")
 
 const STATE_PATH := GRushMock.STATE_PATH
 const STATE_SECTION := GRushMock.STATE_SECTION
@@ -244,8 +245,8 @@ static func _score_error(value: Variant, value_type: String) -> String:
 
 func _submit_score(params: Dictionary) -> Dictionary:
 	var key := str(params.get("key", ""))
-	if key == "":
-		return Result.failure(Result.CODE_INVALID_PARAMS, "A leaderboard key is required.")
+	if not Manifest.is_key(key):
+		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid leaderboard key.")
 	# GameRush と同じく、枠を確かめた後に値を確かめ、値域はその後に確かめる。投稿を受けない枠は、submit が
 	# GameRush と同じく先に断る。metadata と operationId の GameRush の誤り（値の数・段数・対になっていない
 	# サロゲート）は、_handle の説明のとおり Godot からは届かない。
@@ -264,8 +265,8 @@ func _submit_score(params: Dictionary) -> Dictionary:
 
 func _leaderboard_page(params: Dictionary, around_me: bool) -> Dictionary:
 	var key := str(params.get("key", ""))
-	if key == "":
-		return Result.failure(Result.CODE_INVALID_PARAMS, "A leaderboard key is required.")
+	if not Manifest.is_key(key):
+		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid leaderboard key.")
 	var window := int(params.get("range", 0)) if around_me else int(params.get("limit", 0))
 	var outcome := GRushMockLeaderboards.page(
 		key, window, int(params.get("offset", 0)), around_me
