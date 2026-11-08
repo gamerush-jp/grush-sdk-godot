@@ -107,7 +107,7 @@ static func _read_entry(item: Variant, at: String, seen: Dictionary, marker: int
 			return {"error": "%s has an unknown field: %s.%s" % [FILE_NAME, at, field]}
 
 	var key: Variant = item.get("key", null)
-	if typeof(key) != TYPE_STRING or not _is_key(key):
+	if typeof(key) != TYPE_STRING or not is_key(key):
 		return _invalid(at + ".key")
 	if seen.has(key):
 		return {"error": "%s declares the leaderboard key more than once: %s" % [FILE_NAME, key]}
@@ -149,8 +149,9 @@ static func _read_entry(item: Variant, at: String, seen: Dictionary, marker: int
 	}
 
 
-static func _is_key(key: String) -> bool:
-	if key.is_empty() or key.length() > MAX_KEY_LENGTH:
+# GameRush と同じく「.」と「..」も拒む。API の URL のパスに入ると、正規化で別の経路を指すため。
+static func is_key(key: String) -> bool:
+	if key.is_empty() or key.length() > MAX_KEY_LENGTH or key == "." or key == "..":
 		return false
 	for index in key.length():
 		var c := key.unicode_at(index)
