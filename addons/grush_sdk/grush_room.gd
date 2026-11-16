@@ -10,7 +10,8 @@ signal peer_left(index: int)
 signal host_changed(index: int)
 signal transport_changed(transport: String)
 ## 部屋が1通を捨てたときに届く。[code]{"code": String, "message": String}[/code] で、code は
-## [code]"messageTooLarge"[/code]・[code]"rateLimited"[/code]・[code]"badFrame"[/code]。ほかの値が届くこともある。
+## [code]"messageTooLarge"[/code]・[code]"rateLimited"[/code]・[code]"badFrame"[/code]・
+## [code]"targetNotAllowed"[/code]（hub の部屋の非ホストが、ホスト宛てと全員宛て以外へ送った）。ほかの値が届くこともある。
 ## 部屋はつながったままで、続けて送れる。部屋が閉じるときは [signal closed] だけが届く。
 signal error_received(error: Dictionary)
 signal closed(reason: String)
@@ -20,6 +21,11 @@ var room_code := ""
 var room_epoch := 0
 var local_peer_id := 0
 var host_peer_id := 0
+## 部屋の定員。版数 11 未満のランタイムと、定員を伝えない GameRush では 8。
+var max_peers := 8
+## 部屋の形。[code]"mesh"[/code]（全員が全員へ送る）か [code]"hub"[/code]（非ホストはホストへだけ送る）。
+## 版数 11 未満のランタイムと、形を伝えない GameRush では [code]"mesh"[/code]。
+var topology := "mesh"
 var is_closed := false
 
 var _peers: Array = []
@@ -40,6 +46,9 @@ func _init(grush: Node, backend: RefCounted, net: RefCounted, info: Dictionary) 
 	room_epoch = int(info.get("epoch", 0))
 	local_peer_id = int(info.get("localPeerIndex", 0))
 	host_peer_id = int(info.get("hostIndex", 0))
+	var capacity: Variant = info.get("maxPeers")
+	max_peers = int(capacity) if (capacity is int or capacity is float) else 8
+	topology = "hub" if str(info.get("topology", "")) == "hub" else "mesh"
 	_transport = str(info.get("transport", "ws"))
 	_server_offset_ms = float(info.get("serverTimeMs", 0.0)) - _local_now_ms()
 	for entry in info.get("peers", []):
