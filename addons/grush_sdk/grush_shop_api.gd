@@ -19,7 +19,7 @@ const Result := preload("res://addons/grush_sdk/grush_result.gd")
 const Call := preload("res://addons/grush_sdk/grush_call.gd")
 
 ## アイテム販売が使えるランタイムの版数。
-const SHOP_PROTOCOL_VERSION := 11
+const SHOP_PROTOCOL_VERSION := 12
 
 ## GameRush と同じ sku の形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const SKU_PATTERN := "^[a-z0-9][a-z0-9_.-]{0,63}\\z"

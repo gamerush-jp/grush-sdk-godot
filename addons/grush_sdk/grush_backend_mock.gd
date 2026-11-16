@@ -8,8 +8,8 @@ const Manifest := preload("res://addons/grush_sdk/grush_mock_manifest.gd")
 
 const STATE_PATH := GRushMock.STATE_PATH
 const STATE_SECTION := GRushMock.STATE_SECTION
-# モックが実装している一番新しい機能（マルチプレイの部屋の定員と形・作者のアイテム販売）の版数。
-const MOCK_PROTOCOL_VERSION := 11
+# モックが実装している一番新しい機能（作者のアイテム販売）の版数。
+const MOCK_PROTOCOL_VERSION := 12
 # GameRush と同じ mode と部屋コードの形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const MODE_PATTERN := "^[A-Za-z0-9._:-]{1,32}\\z"
 const ROOM_CODE_PATTERN := "^[A-Za-z0-9]{4,12}\\z"

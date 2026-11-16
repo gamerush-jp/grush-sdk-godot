@@ -151,7 +151,7 @@ func _buy(sku: String) -> void:
 
 `pending_received` は決済から戻って付与が届いたときに、買った商品の sku で発火する。接続より先に届いた分は、接続した後に1回だけ届く。JS の呼び出しの中ではなく `call_deferred` で後から配る。`owned()` は ack 済みを含む持っている付与のすべて（`{"id", "sku", "created_at", "acked"}`）で、セーブを失ったときに持ち物を戻すのに使う。
 
-購入できるのは Web の GameRush だけ。アプリと LINE では `purchase` が `unsupported`、`products` は `enabled` が `false` の空の一覧。`pending`・`ack`・`owned` はどこでも動く。ゲームの中でのアイテムの使用は改ざんを防げない。GameRush が保証するのは、払った人にアイテムが届くことまで。古い GameRush（`protocol_version` 11 未満）ではどれも `unsupported` で、`pending_received` は発火しない。
+購入できるのは Web の GameRush だけ。アプリと LINE では `purchase` が `unsupported`、`products` は `enabled` が `false` の空の一覧。`pending`・`ack`・`owned` はどこでも動く。ゲームの中でのアイテムの使用は改ざんを防げない。GameRush が保証するのは、払った人にアイテムが届くことまで。古い GameRush（`protocol_version` 12 未満）ではどれも `unsupported` で、`pending_received` は発火しない。
 
 ### 共有
 
@@ -261,7 +261,7 @@ GRushMockPlayerStates.preview("mock-rival-1", {"deck": "fire", "level": 12})
 
 共有のモックは確認シートを出さず、`GRushMock.share_status`（既定 `"opened"`）を返す。`GRushMock.share_available = false` で共有できない環境を試せる。起動パラメータは GameRush と同じ制限で確かめ、合わなければ `invalidParams`。本文と画像の検査はしない。
 
-アナリティクスのモックは、GameRush と同じ検査をして、通ったイベントを1件ずつ出力し、直近の 200 件を `GRushMock.analytics_events`（GameRush へ渡すのと同じ形の Dictionary の配列）に持つ。弾いたイベントは、GameRush と同じく理由ごとに1回だけ警告する。前面に出るまでの 30 件の溜め・本体の上限・同じステップを最初の1回だけ残す扱い・セッションあたりの上限は再現しないので、モックでは `true` の分がすべて記録に残る。どこへも送らない。モックが名乗る `protocol_version` は 11。モックを使うのは Web 以外の書き出しとエディタだけで、Web の書き出しを GameRush の外で開いたときは、どの呼び出しも `false` になる。
+アナリティクスのモックは、GameRush と同じ検査をして、通ったイベントを1件ずつ出力し、直近の 200 件を `GRushMock.analytics_events`（GameRush へ渡すのと同じ形の Dictionary の配列）に持つ。弾いたイベントは、GameRush と同じく理由ごとに1回だけ警告する。前面に出るまでの 30 件の溜め・本体の上限・同じステップを最初の1回だけ残す扱い・セッションあたりの上限は再現しないので、モックでは `true` の分がすべて記録に残る。どこへも送らない。モックが名乗る `protocol_version` は 12。モックを使うのは Web 以外の書き出しとエディタだけで、Web の書き出しを GameRush の外で開いたときは、どの呼び出しも `false` になる。
 
 相手探し・受信箱・交換所のモックは、`GRushMock.RIVALS` の 3 人の相手を持つ。相手はそれぞれ rating 付きの公開プレイヤー状態を持ち、届いたメッセージを同じ kind と payload で送り返す。はじめと `GRushMockInbox.reset()` / `GRushMockTrades.reset()` の後は、最初の相手からのメッセージ1通と、相手の受付中の出品を2件持つ。payload・offer・want・give の形、`operation_id` での冪等、受付中の出品の上限、受諾の `outcome`、`pending` と ack は GameRush と同じ規則で動く（バイト数は Godot の `JSON.stringify` で数えるので、`3.0` のような小数点の付く数値を GameRush より多く数えることがある）。通報を承諾すると（`GRushMock.confirm_inbox_report` / `confirm_trade_report`、既定 `true`）相手をブロックし、その相手のメッセージと出品は見えなくなる。プレイヤー状態の通報は伏せていない状態にだけ届き、確認の答えを `GRushMock.confirm_player_state_report`（既定 `true`）で決める。
 
