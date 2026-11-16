@@ -4,7 +4,7 @@ GameRush の GameAPI を Godot 4 から呼ぶアドオン。ビルドの書き�
 
 ## 導入
 
-[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.13.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
+[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.14.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
 
 書き出しは Web。それ以外のプラットフォームでは自動的にモックへ落ちる。
 
@@ -120,6 +120,44 @@ var mine: Dictionary = await GRush.trade.mine()
 
 `accept` は先に取られた・期限切れ・取り下げ・見えない出品をエラーにせず、`outcome`（`matched` / `taken` / `expired` / `cancelled` / `notFound`）で返す。`trade` は `matched` のときだけ入る。同じ取引への再送は `matched`。`create` の options の `to` に疑似 ID を渡すと指名の出品になり、`expires_in_sec` は 600〜604800（既定 3 日）。受付中の出品は 1 人 10 件まで。`list` は他人の公開の出品と自分宛ての指名の出品のうち、受付中のもの（新しい順）。`report(trade_id)` は GameRush が確認を出し、承諾されたら `true`。通報すると出品者をブロックする。古い GameRush（`protocolVersion` 7 未満）ではどれも `unsupported`。
 
+### 作者のアイテム販売
+
+```gdscript
+GRush.shop.pending_received.connect(func(_sku: String) -> void: _receive_items())
+
+func _receive_items() -> void:
+    while true:  # pending は1回に 100 件まで。ack したら残りをもう一度読む
+        var pending: Dictionary = await GRush.shop.pending()
+        if not pending["ok"] or pending["value"].is_empty():
+            return
+        for grant in pending["value"]:
+            apply_item(grant["id"], grant["sku"])  # 付与の id で二度反映しない
+        save_game()  # セーブを永続化してから ack する
+        var acked: Dictionary = await GRush.shop.ack(
+            pending["value"].map(func(grant: Dictionary) -> String: return grant["id"])
+        )
+        if not acked["ok"]:
+            return
+
+func _buy(sku: String) -> void:
+    save_game()  # redirecting が返ると、ページはすぐ決済の画面へ移る
+    var bought: Dictionary = await GRush.shop.purchase(sku)
+```
+
+作者が GameRush の Studio か API キーで登録した商品（sku・商品名・価格）を、プレイヤーが買う。ゲームは `products()` で商品を読み、value は `{"enabled": bool, "products": Array}`、商品は `{"sku", "name", "price_jpy"}`。販売が止まっているときは `enabled` が `false` で一覧は空。
+
+`purchase(sku)` の value は `"redirecting"`（決済の画面へ移る）・`"cancelled"`（プレイヤーがやめた）・`"alreadyOwned"`（もう持っている）。**`redirecting` が返るとページはすぐ Stripe の決済画面へ移るので、`purchase` を呼ぶ前にセーブしておく。** プレイヤーの答えを待つので、返るまで長くかかることがある。sku が `^[a-z0-9][a-z0-9_.-]{0,63}$` に合わなければ送らずに `invalidParams`。ゲストは `signInRequired`。
+
+買ったアイテムは付与として届き、`ack` するまで `pending()` に残る。
+
+1. 起動時と `pending_received` を受けたときに `pending()` を読む。value は `{"id", "sku", "created_at"}` の配列で、1回に最大 100 件
+2. 付与をセーブに反映し、セーブを永続化してから `ack(ids)` する（1 回 1〜100 件の UUID。合わなければ送らずに `invalidParams`。value は記録した件数）。ack したら、残りがあればもう一度 `pending()` を読む
+3. 反映済みの付与の id をセーブに持ち、同じ付与を二度反映しない
+
+`pending_received` は決済から戻って付与が届いたときに、買った商品の sku で発火する。接続より先に届いた分は、接続した後に1回だけ届く。JS の呼び出しの中ではなく `call_deferred` で後から配る。`owned()` は ack 済みを含む持っている付与のすべて（`{"id", "sku", "created_at", "acked"}`）で、セーブを失ったときに持ち物を戻すのに使う。
+
+購入できるのは Web の GameRush だけ。アプリと LINE では `purchase` が `unsupported`、`products` は `enabled` が `false` の空の一覧。`pending`・`ack`・`owned` も今はアプリと LINE では `unsupported`（Web で買った分は Web で受け取る）。ゲームの中でのアイテムの使用は改ざんを防げない。GameRush が保証するのは、払った人にアイテムが届くことまで。古い GameRush（`protocol_version` 12 未満）ではどれも `unsupported` で、`pending_received` は発火しない。
+
 ### 共有
 
 ```gdscript
@@ -228,7 +266,7 @@ GRushMockPlayerStates.preview("mock-rival-1", {"deck": "fire", "level": 12})
 
 共有のモックは確認シートを出さず、`GRushMock.share_status`（既定 `"opened"`）を返す。`GRushMock.share_available = false` で共有できない環境を試せる。起動パラメータは GameRush と同じ制限で確かめ、合わなければ `invalidParams`。本文と画像の検査はしない。
 
-アナリティクスのモックは、GameRush と同じ検査をして、通ったイベントを1件ずつ出力し、直近の 200 件を `GRushMock.analytics_events`（GameRush へ渡すのと同じ形の Dictionary の配列）に持つ。弾いたイベントは、GameRush と同じく理由ごとに1回だけ警告する。前面に出るまでの 30 件の溜め・本体の上限・同じステップを最初の1回だけ残す扱い・セッションあたりの上限は再現しないので、モックでは `true` の分がすべて記録に残る。どこへも送らない。モックが名乗る `protocol_version` は 11。モックを使うのは Web 以外の書き出しとエディタだけで、Web の書き出しを GameRush の外で開いたときは、どの呼び出しも `false` になる。
+アナリティクスのモックは、GameRush と同じ検査をして、通ったイベントを1件ずつ出力し、直近の 200 件を `GRushMock.analytics_events`（GameRush へ渡すのと同じ形の Dictionary の配列）に持つ。弾いたイベントは、GameRush と同じく理由ごとに1回だけ警告する。前面に出るまでの 30 件の溜め・本体の上限・同じステップを最初の1回だけ残す扱い・セッションあたりの上限は再現しないので、モックでは `true` の分がすべて記録に残る。どこへも送らない。モックが名乗る `protocol_version` は 12。モックを使うのは Web 以外の書き出しとエディタだけで、Web の書き出しを GameRush の外で開いたときは、どの呼び出しも `false` になる。
 
 相手探し・受信箱・交換所のモックは、`GRushMock.RIVALS` の 3 人の相手を持つ。相手はそれぞれ rating 付きの公開プレイヤー状態を持ち、届いたメッセージを同じ kind と payload で送り返す。はじめと `GRushMockInbox.reset()` / `GRushMockTrades.reset()` の後は、最初の相手からのメッセージ1通と、相手の受付中の出品を2件持つ。payload・offer・want・give の形、`operation_id` での冪等、受付中の出品の上限、受諾の `outcome`、`pending` と ack は GameRush と同じ規則で動く（バイト数は Godot の `JSON.stringify` で数えるので、`3.0` のような小数点の付く数値を GameRush より多く数えることがある）。通報を承諾すると（`GRushMock.confirm_inbox_report` / `confirm_trade_report`、既定 `true`）相手をブロックし、その相手のメッセージと出品は見えなくなる。プレイヤー状態の通報は伏せていない状態にだけ届き、確認の答えを `GRushMock.confirm_player_state_report`（既定 `true`）で決める。
 
@@ -239,6 +277,8 @@ GRushMockTrades.accept(my_trade_id, {"item": "gem"})  # 相手が受けて、自
 GRushMockTrades.expire(listing["id"])
 GRushMockPlayerStates.define("custom-rival", {"level": 3}, false, 1300)
 ```
+
+アイテム販売のモックは `GRushMockShop.products`（`{"sku", "name", "price_jpy"}` の配列。既定は `starter_pack` と `remove_ads`）を売る。`purchase` は決済の画面へ移らず、その場で付与を `pending` に積んで `"redirecting"` を返し、後のフレームで `pending_received` を起こす。持っている商品は `"alreadyOwned"`、売っていない sku は `invalidParams`、ゲスト（`GRushMock.signed_in = false`）は `signInRequired`。`GRushMockShop.purchase_status = "cancelled"` でやめたときを、`GRushMockShop.purchase_available = false` でアプリと LINE（`purchase` が `unsupported`、`products` が空）を試せる。`GRushMockShop.grant(sku)` は決済を通さずに付与を積む（別の端末で買った分が届くのを試す）。付与はプロセスの中だけに持ち、`GRushMockShop.reset()` で消える。
 
 **`unreliable_drop_rate` は既定 0 だが、出荷前に必ず 0 より大きくして試すこと。** WebSocket 中継では `unreliable` も落ちずに届くため、パケットが落ちる前提で書けているかを確認できる場所はエディタのモックだけになる。
 
