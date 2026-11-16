@@ -86,6 +86,7 @@ func remove_peer(peer: RefCounted) -> void:
 		return
 	_members = _members.filter(func(entry: Dictionary) -> bool: return entry.get("peer") != peer)
 	_outgoing_seq.erase(peer.index)
+	_forget_config_if_empty()
 	_announce("peerleave", peer.index, {})
 
 
@@ -428,7 +429,14 @@ func _leave() -> void:
 	_members = _members.filter(func(entry: Dictionary) -> bool: return entry["index"] != leaving)
 	_outgoing_seq.erase(leaving)
 	_local_index = -1
+	_forget_config_if_empty()
 	_announce("peerleave", leaving, {})
+
+
+# 部屋が空になったら定員と形を忘れ、次に入る join の設定で部屋を作り直す。
+func _forget_config_if_empty() -> void:
+	if _members.is_empty():
+		_room_configured = false
 
 
 func _announce(kind: String, subject: int, peer: Dictionary) -> void:
