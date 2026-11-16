@@ -126,13 +126,18 @@ var mine: Dictionary = await GRush.trade.mine()
 GRush.shop.pending_received.connect(func(_sku: String) -> void: _receive_items())
 
 func _receive_items() -> void:
-    var pending: Dictionary = await GRush.shop.pending()
-    if not pending["ok"] or pending["value"].is_empty():
-        return
-    for grant in pending["value"]:
-        apply_item(grant["id"], grant["sku"])  # 付与の id で二度反映しない
-    save_game()  # セーブを永続化してから ack する
-    await GRush.shop.ack(pending["value"].map(func(grant: Dictionary) -> String: return grant["id"]))
+    while true:  # pending は1回に 100 件まで。ack したら残りをもう一度読む
+        var pending: Dictionary = await GRush.shop.pending()
+        if not pending["ok"] or pending["value"].is_empty():
+            return
+        for grant in pending["value"]:
+            apply_item(grant["id"], grant["sku"])  # 付与の id で二度反映しない
+        save_game()  # セーブを永続化してから ack する
+        var acked: Dictionary = await GRush.shop.ack(
+            pending["value"].map(func(grant: Dictionary) -> String: return grant["id"])
+        )
+        if not acked["ok"]:
+            return
 
 func _buy(sku: String) -> void:
     save_game()  # redirecting が返ると、ページはすぐ決済の画面へ移る
@@ -145,8 +150,8 @@ func _buy(sku: String) -> void:
 
 買ったアイテムは付与として届き、`ack` するまで `pending()` に残る。
 
-1. 起動時と `pending_received` を受けたときに `pending()` を読む。value は `{"id", "sku", "created_at"}` の配列
-2. 付与をセーブに反映し、セーブを永続化してから `ack(ids)` する（1 回 1〜100 件。value は記録した件数）
+1. 起動時と `pending_received` を受けたときに `pending()` を読む。value は `{"id", "sku", "created_at"}` の配列で、1回に最大 100 件
+2. 付与をセーブに反映し、セーブを永続化してから `ack(ids)` する（1 回 1〜100 件の UUID。合わなければ送らずに `invalidParams`。value は記録した件数）。ack したら、残りがあればもう一度 `pending()` を読む
 3. 反映済みの付与の id をセーブに持ち、同じ付与を二度反映しない
 
 `pending_received` は決済から戻って付与が届いたときに、買った商品の sku で発火する。接続より先に届いた分は、接続した後に1回だけ届く。JS の呼び出しの中ではなく `call_deferred` で後から配る。`owned()` は ack 済みを含む持っている付与のすべて（`{"id", "sku", "created_at", "acked"}`）で、セーブを失ったときに持ち物を戻すのに使う。

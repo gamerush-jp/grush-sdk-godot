@@ -67,8 +67,12 @@ func dispose() -> void:
 
 
 func _on_watch(handler: Callable, args: Array) -> void:
-	if args.is_empty() or args[0] == null:
+	var json := JavaScriptBridge.get_interface("JSON")
+	if args.is_empty() or args[0] == null or json == null:
 		return
-	var sku: Variant = args[0]["sku"]
-	if sku != null and str(sku) != "":
-		handler.call(str(sku))
+	var parsed: Variant = JSON.parse_string(str(json.stringify(args[0])))
+	if not (parsed is Dictionary):
+		return
+	var sku: Variant = parsed.get("sku")
+	if sku is String and sku != "":
+		handler.call(sku)

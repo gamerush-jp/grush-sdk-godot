@@ -24,7 +24,10 @@ const SHOP_PROTOCOL_VERSION := 12
 ## GameRush と同じ sku の形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const SKU_PATTERN := "^[a-z0-9][a-z0-9_.-]{0,63}\\z"
 
-const PURCHASE_STATUSES := ["redirecting", "cancelled", "alreadyOwned"]
+## [method ack] に1回で渡せる付与の id の数。[method pending] が1回で返す付与の数の上限も同じ。
+const MAX_ACK_IDS := 100
+
+const UUID_PATTERN := "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\z"
 
 ## 決済から戻って付与が届いたときに、買った商品の [param sku] で発火する。受けたら [method pending] を
 ## 読んで反映する。接続より先に届いた分は、接続した後に1回だけ届く。JavaScript の呼び出しの中ではなく
@@ -40,6 +43,7 @@ var _disposed := false
 # use_backend のたびに増やす。差し替える前の受け取り口から call_deferred で積まれた合図を捨てるため。
 var _generation := 0
 var _sku_pattern := RegEx.create_from_string(SKU_PATTERN)
+var _uuid_pattern := RegEx.create_from_string(UUID_PATTERN)
 
 
 func _init(grush: Node, backend: RefCounted, pending_transport: RefCounted = null) -> void:
@@ -79,6 +83,10 @@ func products() -> Dictionary:
 	var raw: Variant = response["value"]
 	if not (raw is Dictionary) or not (raw.get("products") is Array):
 		return Result.failure(Result.CODE_INTERNAL, "GameRush returned an unreadable product list.")
+	var enabled: Variant = raw.get("enabled")
+	# 止まっている販売の商品は買えないので、ランタイムが何か返しても見せない。
+	if not (enabled is bool and enabled):
+		return Result.ok({"enabled": false, "products": []})
 	var items: Array = []
 	for entry in raw["products"]:
 		if entry is Dictionary and str(entry.get("sku", "")) != "":
@@ -90,8 +98,7 @@ func products() -> Dictionary:
 					"price_jpy": int(price) if price is int or price is float else 0,
 				}
 			)
-	var enabled: Variant = raw.get("enabled")
-	return Result.ok({"enabled": enabled is bool and enabled, "products": items})
+	return Result.ok({"enabled": true, "products": items})
 
 
 ## [param sku] の商品を買う。value は `redirecting`（ページが決済の画面へ移る）・`cancelled`（プレイヤーが
@@ -115,14 +122,20 @@ func purchase(sku: String) -> Dictionary:
 
 
 ## まだ ack していない付与（買って届いたアイテム）。value は `{"id": String, "sku": String,
-## "created_at": String}` の配列。起動時にも読む。
+## "created_at": String}` の配列で、1回に [constant MAX_ACK_IDS] 件まで。起動時にも読む。
+## ack したら、残りがあるかもしれないのでもう一度読む（空になるまで繰り返す）。
 func pending() -> Dictionary:
 	return _grants(await _call("shop.pending", {}), false)
 
 
 ## 付与をセーブに反映したことを伝え、value に記録した件数を返す（1 回 1〜100 件の付与の id）。
 ## **セーブへ反映して保存してから呼ぶこと。** ack した付与は [method pending] に戻らない。
+## 件数か id の形（UUID）が合わなければ送らずに invalidParams。
 func ack(ids: Array) -> Dictionary:
+	if not _ids_valid(ids):
+		if not _supported():
+			return Result.unsupported()
+		return Result.failure(Result.CODE_INVALID_PARAMS, "ids must be 1 to 100 grant ids.")
 	var response := await _call("shop.ack", {"ids": ids})
 	if not response["ok"]:
 		return response
@@ -148,6 +161,15 @@ func _call(method: String, params: Dictionary) -> Dictionary:
 	return await waiting.completed
 
 
+func _ids_valid(ids: Array) -> bool:
+	if ids.is_empty() or ids.size() > MAX_ACK_IDS:
+		return false
+	for id in ids:
+		if not (id is String) or _uuid_pattern.search(id) == null:
+			return false
+	return true
+
+
 func _supported() -> bool:
 	return (
 		not _disposed
@@ -165,9 +187,14 @@ static func _grants(response: Dictionary, with_acked: bool) -> Dictionary:
 		return Result.failure(Result.CODE_INTERNAL, "GameRush returned unreadable items.")
 	var grants: Array = []
 	for entry in raw["grants"]:
-		if entry is Dictionary and str(entry.get("id", "")) != "":
+		# id か sku の無い付与は、反映も ack もできないので捨てる。
+		if entry is Dictionary and _filled(entry.get("id")) and _filled(entry.get("sku")):
 			grants.append(grant_of(entry, with_acked))
 	return Result.ok(grants)
+
+
+static func _filled(value: Variant) -> bool:
+	return value is String and value != ""
 
 
 static func grant_of(raw: Dictionary, with_acked: bool) -> Dictionary:

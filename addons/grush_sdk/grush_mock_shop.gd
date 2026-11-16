@@ -9,7 +9,7 @@ extends RefCounted
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
 const ShopApi := preload("res://addons/grush_sdk/grush_shop_api.gd")
 
-const MAX_ACK_IDS := 100
+const MAX_ACK_IDS := ShopApi.MAX_ACK_IDS
 
 ## 売っている商品。[code]GRush.shop.products[/code] が返すのと同じ形（`sku`・`name`・`price_jpy`）の Dictionary。
 ## 形は確かめずにそのまま返す。
@@ -25,9 +25,7 @@ static var purchase_status := "redirecting"
 
 static var _grants: Array = []
 static var _sku_pattern := RegEx.create_from_string(ShopApi.SKU_PATTERN)
-static var _uuid_pattern := RegEx.create_from_string(
-	"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-)
+static var _uuid_pattern := RegEx.create_from_string(ShopApi.UUID_PATTERN)
 # 付与の合図。GameRush と同じく、受け取る相手は1つで後から来たものに置き換え、受け取る相手より先に来た合図は
 # 来たときに1回だけ渡す（先に来た合図が2つ以上あれば最後の1つ）。
 static var _signal_sku := ""
@@ -106,7 +104,7 @@ static func handle_purchase(params: Dictionary) -> Dictionary:
 static func handle_pending() -> Dictionary:
 	var grants: Array = []
 	for entry in _grants:
-		if not bool(entry["acked"]):
+		if not bool(entry["acked"]) and grants.size() < MAX_ACK_IDS:
 			grants.append(_wire(entry, false))
 	return Result.ok({"grants": grants})
 
