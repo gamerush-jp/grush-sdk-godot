@@ -156,7 +156,7 @@ func _buy(sku: String) -> void:
 
 `pending_received` は決済から戻って付与が届いたときに、買った商品の sku で発火する。接続より先に届いた分は、接続した後に1回だけ届く。JS の呼び出しの中ではなく `call_deferred` で後から配る。`owned()` は ack 済みを含む持っている付与のすべて（`{"id", "sku", "created_at", "acked"}`）で、セーブを失ったときに持ち物を戻すのに使う。
 
-購入できるのは Web の GameRush だけ。アプリと LINE では `purchase` が `unsupported`、`products` は `enabled` が `false` の空の一覧。`pending`・`ack`・`owned` はどこでも動く。ゲームの中でのアイテムの使用は改ざんを防げない。GameRush が保証するのは、払った人にアイテムが届くことまで。古い GameRush（`protocol_version` 12 未満）ではどれも `unsupported` で、`pending_received` は発火しない。
+購入できるのは Web の GameRush だけ。アプリと LINE では `purchase` が `unsupported`、`products` は `enabled` が `false` の空の一覧。`pending`・`ack`・`owned` も今はアプリと LINE では `unsupported`（Web で買った分は Web で受け取る）。ゲームの中でのアイテムの使用は改ざんを防げない。GameRush が保証するのは、払った人にアイテムが届くことまで。古い GameRush（`protocol_version` 12 未満）ではどれも `unsupported` で、`pending_received` は発火しない。
 
 ### 共有
 

@@ -5,7 +5,7 @@ extends RefCounted
 ##
 ## 購入できるのは Web の GameRush だけ。アプリと LINE では [method purchase] が unsupported、
 ## [method products] は `enabled` が false の空の一覧。[method pending]・[method ack]・[method owned] は
-## どこでも動く。
+## 今はアプリと LINE では unsupported（Web で買った分は Web で受け取る）。
 ##
 ## 取りこぼさないために、次の順で使う。
 ## 1. [method purchase] を呼ぶ前にセーブする。`redirecting` が返ると、ページはすぐ決済の画面へ移る。
