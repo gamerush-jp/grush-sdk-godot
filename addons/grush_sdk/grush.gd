@@ -33,6 +33,9 @@ const AnalyticsWeb := preload("res://addons/grush_sdk/grush_analytics_web.gd")
 const AnalyticsMock := preload("res://addons/grush_sdk/grush_analytics_mock.gd")
 const InboxApi := preload("res://addons/grush_sdk/grush_inbox_api.gd")
 const TradeApi := preload("res://addons/grush_sdk/grush_trade_api.gd")
+const ShopApi := preload("res://addons/grush_sdk/grush_shop_api.gd")
+const ShopWeb := preload("res://addons/grush_sdk/grush_shop_web.gd")
+const ShopMock := preload("res://addons/grush_sdk/grush_shop_mock.gd")
 
 var backend: RefCounted
 var player: RefCounted
@@ -50,6 +53,8 @@ var analytics: RefCounted
 var inbox: RefCounted
 ## 交換所。アイテムを出品し、同じゲームの別のプレイヤーが受ける。
 var trade: RefCounted
+## 作者のアイテム販売。商品を読み、買い、届いたアイテムを受け取る。
+var shop: RefCounted
 
 
 func _ready() -> void:
@@ -64,10 +69,13 @@ func _exit_tree() -> void:
 	if player_state != null:
 		player_state.dispose()
 	player_state = null
+	if shop != null:
+		shop.dispose()
+	shop = null
 
 
 ## バックエンドを差し替える。null なら実行環境に合うものを作り直す。
-## locale と player_state は作り直さないので、changed と preview_received への接続は
+## locale・player_state・shop は作り直さないので、changed・preview_received・pending_received への接続は
 ## 新しいバックエンドの通知を受け続ける。
 func use_backend(replacement: RefCounted) -> void:
 	_dispose()
@@ -88,6 +96,10 @@ func use_backend(replacement: RefCounted) -> void:
 	analytics = AnalyticsApi.new(self, _analytics_transport(backend))
 	inbox = InboxApi.new(self, backend)
 	trade = TradeApi.new(self, backend)
+	if shop == null:
+		shop = ShopApi.new(self, backend, _shop_transport(backend))
+	else:
+		shop.use_backend(backend, _shop_transport(backend))
 
 
 func _dispose() -> void:
@@ -180,6 +192,14 @@ func _player_state_preview_transport(active: RefCounted) -> RefCounted:
 		return PlayerStatePreviewWeb.new()
 	if active is MockBackend:
 		return PlayerStatePreviewMock.new()
+	return null
+
+
+func _shop_transport(active: RefCounted) -> RefCounted:
+	if active is WebBackend:
+		return ShopWeb.new()
+	if active is MockBackend:
+		return ShopMock.new()
 	return null
 
 

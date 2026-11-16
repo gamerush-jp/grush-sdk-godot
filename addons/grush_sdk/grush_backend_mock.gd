@@ -8,7 +8,7 @@ const Manifest := preload("res://addons/grush_sdk/grush_mock_manifest.gd")
 
 const STATE_PATH := GRushMock.STATE_PATH
 const STATE_SECTION := GRushMock.STATE_SECTION
-# モックが実装している一番新しい機能（マルチプレイの部屋の定員と形）の版数。
+# モックが実装している一番新しい機能（マルチプレイの部屋の定員と形・作者のアイテム販売）の版数。
 const MOCK_PROTOCOL_VERSION := 11
 # GameRush と同じ mode と部屋コードの形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const MODE_PATTERN := "^[A-Za-z0-9._:-]{1,32}\\z"
@@ -209,6 +209,16 @@ func _handle(method: String, params: Dictionary) -> Dictionary:
 			return GRushMockTrades.handle_ack(params, _local_pseudo_id())
 		"trade.report":
 			return GRushMockTrades.handle_report(params, _local_pseudo_id())
+		"shop.products":
+			return GRushMockShop.handle_products()
+		"shop.purchase":
+			return GRushMockShop.handle_purchase(params)
+		"shop.pending":
+			return GRushMockShop.handle_pending()
+		"shop.ack":
+			return GRushMockShop.handle_ack(params)
+		"shop.owned":
+			return GRushMockShop.handle_owned()
 	return Result.failure(
 		Result.CODE_UNSUPPORTED, "The mock backend does not implement %s." % method
 	)

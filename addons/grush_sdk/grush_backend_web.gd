@@ -3,6 +3,7 @@ extends RefCounted
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
 const JsonDepth := preload("res://addons/grush_sdk/grush_json_depth.gd")
 const JsText := preload("res://addons/grush_sdk/grush_js_text.gd")
+const ShopWeb := preload("res://addons/grush_sdk/grush_shop_web.gd")
 
 var _room: JavaScriptObject = null
 var _room_callbacks: Array = []
@@ -88,6 +89,7 @@ func _invoke(method: String, params: Dictionary) -> Variant:
 	var states := JavaScriptBridge.get_interface("GRushPlayerState")
 	var inbox := JavaScriptBridge.get_interface("GRushInbox")
 	var trade := JavaScriptBridge.get_interface("GRushTrade")
+	var shop := ShopWeb.api()
 	match method:
 		"player.getSelf":
 			return player.getSelf() if player != null else null
@@ -178,6 +180,16 @@ func _invoke(method: String, params: Dictionary) -> Variant:
 			return trade.ack(_js_value(params.get("ids", []))) if trade != null else null
 		"trade.report":
 			return trade.report(params.get("tradeId", "")) if trade != null else null
+		"shop.products":
+			return shop.products() if shop != null else null
+		"shop.purchase":
+			return shop.purchase(params.get("sku", "")) if shop != null else null
+		"shop.pending":
+			return shop.pending() if shop != null else null
+		"shop.ack":
+			return shop.ack(_js_value(params.get("ids", []))) if shop != null else null
+		"shop.owned":
+			return shop.owned() if shop != null else null
 	return null
 
 
@@ -272,9 +284,13 @@ func _value_of(method: String, value: Variant) -> Variant:
 			return _envelope(_gd_value(value), "reported")
 		"trade.create", "trade.cancel":
 			return _envelope(_gd_value(value), "trade")
-		"trade.ack":
+		"trade.ack", "shop.ack":
 			return _envelope(_gd_value(value), "acked")
+		"shop.purchase":
+			return _envelope(_gd_value(value), "status")
 		"inbox.list", "trade.list", "trade.mine", "trade.accept":
+			return _gd_value(value)
+		"shop.products", "shop.pending", "shop.owned":
 			return _gd_value(value)
 	return null
 
