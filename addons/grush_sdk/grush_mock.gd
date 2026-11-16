@@ -20,7 +20,9 @@ static var confirm_inbox_report := true
 ## 交換所の通報の確認でプレイヤーが押す答え。
 static var confirm_trade_report := true
 static var unreliable_drop_rate := 0.0
-static var max_peers := 8
+## モックの部屋の定員の上書き。部屋の定員（[code]GRush.net.join_with[/code] の max_peers、既定 8）と
+## 小さいほうが効く。満員を試すときに下げる。
+static var max_peers := 100
 static var share_available := true
 static var share_status := "opened"
 static var locale := ""

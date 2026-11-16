@@ -4,7 +4,7 @@ GameRush の GameAPI を Godot 4 から呼ぶアドオン。ビルドの書き�
 
 ## 導入
 
-[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.12.2`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
+[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.13.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
 
 書き出しは Web。それ以外のプラットフォームでは自動的にモックへ落ちる。
 
@@ -23,7 +23,30 @@ if joined["ok"]:
     room.send(payload, GRush.CHANNEL_UNRELIABLE, GRush.EVERYONE)
 ```
 
-部屋が1通を捨てると `error_received` が `{"code": String, "message": String}` で届く。`code` は `"messageTooLarge"`・`"rateLimited"`・`"badFrame"` で、ほかの値が届くこともある。部屋はつながったままで、続けて送れる。部屋が閉じるときは `closed` だけが届く。
+部屋が1通を捨てると `error_received` が `{"code": String, "message": String}` で届く。`code` は `"messageTooLarge"`・`"rateLimited"`・`"badFrame"`・`"targetNotAllowed"`（下記の hub の部屋）で、ほかの値が届くこともある。部屋はつながったままで、続けて送れる。部屋が閉じるときは `closed` だけが届く。
+
+### 部屋の定員と形
+
+```gdscript
+var joined: Dictionary = await GRush.net.join_with(
+    {"mode": "arena", "max_peers": 12, "topology": "hub", "host_selection": "auto"}
+)
+if joined["ok"]:
+    var room: GRushRoom = joined["value"]
+    print(room.max_peers, room.topology)
+```
+
+`join_with` は `join` と同じく部屋へ入り、辞書で `mode`・`room_code`・`target_room_size` に加えて次を渡せる。どれも省略でき、値が合わなければ `invalidParams`。
+
+- `max_peers`: 部屋の定員で、1〜100 の整数。既定 8。`target_room_size` は 1〜定員
+- `topology`: `"mesh"`（既定。全員が全員へ送る。定員 16 まで）か `"hub"`（ホストへ集める）
+- `host_selection`: `"auto"` を渡すと、端末の性能と遅延で部屋がホストを選ぶ。渡さなければ最初に入った peer がホスト
+
+hub の部屋の非ホストが送れるのは、ホスト宛てと全員宛て（ホスト宛てとして読まれる）だけ。ほかの宛先へ送ると `error_received` に `"targetNotAllowed"` が届き、その1通は捨てられる。部屋は非ホストの入力を 50ms ごとにまとめてホストへ渡し、ホストには1通ずつ `message_received` で届く。ホストは入力を受けている間は少なくとも 2 秒ごとに送る。送らないと止まったとみなされ、ホストが替わる。ホストは離席や点数でも替わることがあるので、`host_changed` を受けて状態を引き継ぐ。
+
+送れる数は毎秒、定員 8 以下の mesh で 30 通、定員 9 以上の mesh と hub の非ホストで 20 通。hub のホストは人数に応じて増える。超えた分は `"rateLimited"` で捨てられる。
+
+`max_peers`・`topology`・`host_selection` のどれかを渡したとき、古い GameRush（`protocol_version` 11 未満）では `unsupported`。定員と形を知らない古いアプリの GameRush は、それらを無視して 8 人の mesh の部屋へ入る（`target_room_size` が 9 以上なら `invalidParams`）。入った部屋の実際の定員と形は `room.max_peers` と `room.topology` で確かめる。`protocol_version` 11 未満では 8 と `"mesh"`。`room_code` で指定した部屋が違う定員か形で既にあるときは `invalidParams`。
 
 すべての API は `{"ok": bool, "value": Variant, "code": String, "message": String}` を返し、例外を投げない（アナリティクスは `bool` を返す。下記）。GameRush の外で動かした場合は `ok` が `false`、`code` が `"unsupported"` になるだけで、ゲームは止まらない。
 
@@ -185,11 +208,11 @@ var opponent := GRush.mock_add_peer("Sparring Partner")
 opponent.received.connect(func(message: Dictionary) -> void: opponent.send(reply))
 ```
 
-`GRush.mock_add_peer` で作った相手は同じプロセス内の2人目の peer として部屋に入り、送受信が実際に往復する。部屋が `GRushMock.max_peers` 人で埋まっていれば `null` を返す。
+`GRush.mock_add_peer` で作った相手は同じプロセス内の2人目の peer として部屋に入り、送受信が実際に往復する。部屋が埋まっていれば `null` を返す。モックの部屋の定員は、部屋の定員（`join_with` の `max_peers`、既定 8）と `GRushMock.max_peers`（既定 100）の小さいほう。満員を試すときは `GRushMock.max_peers` を下げる。
 
-モックの `GRush.net.join` は GameRush と同じく、`mode`（英数字と `._:-` の1〜32文字）か `room_code`（英数字の4〜12文字）の形が違うか、`target_room_size` が 0（未指定）でも 1〜8 でもなければ `invalidParams` で失敗する。部屋が埋まっていれば `unavailable` で失敗する。
+モックの `GRush.net.join` と `join_with` は GameRush と同じく、`mode`（英数字と `._:-` の1〜32文字）か `room_code`（英数字の4〜12文字）の形が違うとき、`max_peers` が 1〜100 の整数でないとき、`topology` が `"mesh"` でも `"hub"` でもないとき、mesh の `max_peers` が 16 を超えるとき、`target_room_size` が 1〜定員でないとき（`join` の 0 は未指定）は `invalidParams` で失敗する。部屋が埋まっていれば `unavailable` で失敗する。モックの部屋は、無人のときに入った `join` の定員と形を覚え、`add_peer` の相手だけがいる部屋は次の `join` の定員と形を受ける。覚えた定員か形と違う `join` は、`room_code` を渡していれば `invalidParams`、渡していなければ `add_peer` の相手を外して新しい部屋で始める。hub の部屋では GameRush と同じく、非ホストの全員宛てはホストにだけ届き、ホスト以外の宛先は捨てる（自分が送った分は `error_received` に `"targetNotAllowed"` が届く）。ホストは最も小さい index の peer で、`host_selection` は使わない。入力を束ねる・送信の数を数える・ホストが止まったとみなすことはしない。
 
-モックの部屋は1つなので、`room_code` を渡さない `join` の `target_room_size` は次のように働く。今の部屋の人数が `target_room_size`（`GRushMock.max_peers` のほうが小さければ `GRushMock.max_peers`）以上なら、`GRush.mock_add_peer` で作った相手を外して `MOCKROOM2`、`MOCKROOM3` … の新しい部屋で始める。それより少なければ今の部屋へ入る。外された相手の `send` はどこへも届かない。部屋数の上限は無いので、GameRush で新しい部屋を作れないときの振り分けは再現しない。
+モックの部屋は1つなので、`room_code` を渡さない `join` の `target_room_size` は次のように働く。今の部屋の人数が `target_room_size`（モックの部屋の定員のほうが小さければその定員）以上なら、`GRush.mock_add_peer` で作った相手を外して `MOCKROOM2`、`MOCKROOM3` … の新しい部屋で始める。それより少なければ今の部屋へ入る。外された相手の `send` はどこへも届かない。部屋数の上限は無いので、GameRush で新しい部屋を作れないときの振り分けは再現しない。
 
 `GRush.mock_raise_room_error(code, message)` は、自分がいる部屋に `error_received` を届ける（次のフレーム以降に届き、部屋は閉じない）。部屋にいなければ `false` を返す。
 
@@ -205,7 +228,7 @@ GRushMockPlayerStates.preview("mock-rival-1", {"deck": "fire", "level": 12})
 
 共有のモックは確認シートを出さず、`GRushMock.share_status`（既定 `"opened"`）を返す。`GRushMock.share_available = false` で共有できない環境を試せる。起動パラメータは GameRush と同じ制限で確かめ、合わなければ `invalidParams`。本文と画像の検査はしない。
 
-アナリティクスのモックは、GameRush と同じ検査をして、通ったイベントを1件ずつ出力し、直近の 200 件を `GRushMock.analytics_events`（GameRush へ渡すのと同じ形の Dictionary の配列）に持つ。弾いたイベントは、GameRush と同じく理由ごとに1回だけ警告する。前面に出るまでの 30 件の溜め・本体の上限・同じステップを最初の1回だけ残す扱い・セッションあたりの上限は再現しないので、モックでは `true` の分がすべて記録に残る。どこへも送らない。モックが名乗る `protocol_version` は 10。モックを使うのは Web 以外の書き出しとエディタだけで、Web の書き出しを GameRush の外で開いたときは、どの呼び出しも `false` になる。
+アナリティクスのモックは、GameRush と同じ検査をして、通ったイベントを1件ずつ出力し、直近の 200 件を `GRushMock.analytics_events`（GameRush へ渡すのと同じ形の Dictionary の配列）に持つ。弾いたイベントは、GameRush と同じく理由ごとに1回だけ警告する。前面に出るまでの 30 件の溜め・本体の上限・同じステップを最初の1回だけ残す扱い・セッションあたりの上限は再現しないので、モックでは `true` の分がすべて記録に残る。どこへも送らない。モックが名乗る `protocol_version` は 11。モックを使うのは Web 以外の書き出しとエディタだけで、Web の書き出しを GameRush の外で開いたときは、どの呼び出しも `false` になる。
 
 相手探し・受信箱・交換所のモックは、`GRushMock.RIVALS` の 3 人の相手を持つ。相手はそれぞれ rating 付きの公開プレイヤー状態を持ち、届いたメッセージを同じ kind と payload で送り返す。はじめと `GRushMockInbox.reset()` / `GRushMockTrades.reset()` の後は、最初の相手からのメッセージ1通と、相手の受付中の出品を2件持つ。payload・offer・want・give の形、`operation_id` での冪等、受付中の出品の上限、受諾の `outcome`、`pending` と ack は GameRush と同じ規則で動く（バイト数は Godot の `JSON.stringify` で数えるので、`3.0` のような小数点の付く数値を GameRush より多く数えることがある）。通報を承諾すると（`GRushMock.confirm_inbox_report` / `confirm_trade_report`、既定 `true`）相手をブロックし、その相手のメッセージと出品は見えなくなる。プレイヤー状態の通報は伏せていない状態にだけ届き、確認の答えを `GRushMock.confirm_player_state_report`（既定 `true`）で決める。
 

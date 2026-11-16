@@ -8,13 +8,16 @@ const Manifest := preload("res://addons/grush_sdk/grush_mock_manifest.gd")
 
 const STATE_PATH := GRushMock.STATE_PATH
 const STATE_SECTION := GRushMock.STATE_SECTION
-# モックが実装している一番新しい機能（公開プレイヤー状態の確認用の表示）の版数。
-const MOCK_PROTOCOL_VERSION := 10
+# モックが実装している一番新しい機能（マルチプレイの部屋の定員と形）の版数。
+const MOCK_PROTOCOL_VERSION := 11
 # GameRush と同じ mode と部屋コードの形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const MODE_PATTERN := "^[A-Za-z0-9._:-]{1,32}\\z"
 const ROOM_CODE_PATTERN := "^[A-Za-z0-9]{4,12}\\z"
-# GameRush の定員。モックの GameRush と同じ検査なので、GRushMock.max_peers には合わせない。
-const MAX_TARGET_ROOM_SIZE := 8
+# GameRush と同じ部屋の定員の既定と上限。join の検査は GameRush と同じにするので、GRushMock.max_peers には合わせない。
+const DEFAULT_MAX_PEERS := 8
+const MAX_PEERS_LIMIT := 100
+const MESH_MAX_PEERS := 16
+const TOPOLOGIES := ["mesh", "hub"]
 
 var _members: Array = []
 var _outgoing_seq: Dictionary = {}
@@ -22,6 +25,11 @@ var _local_index := -1
 var _consented := false
 var _room_code := ""
 var _room_serial := 1
+# 部屋の定員と形。GameRush の部屋と同じく、無人の部屋へ最初に入った join の設定を覚える。
+# add_peer の相手だけがいる部屋は設定を覚えておらず、次の join の設定を受ける。
+var _room_max_peers := DEFAULT_MAX_PEERS
+var _room_topology := "mesh"
+var _room_configured := false
 var _net_handler := Callable()
 var _random := RandomNumberGenerator.new()
 var _mode_pattern := RegEx.create_from_string(MODE_PATTERN)
@@ -78,6 +86,7 @@ func remove_peer(peer: RefCounted) -> void:
 		return
 	_members = _members.filter(func(entry: Dictionary) -> bool: return entry.get("peer") != peer)
 	_outgoing_seq.erase(peer.index)
+	_forget_config_if_empty()
 	_announce("peerleave", peer.index, {})
 
 
@@ -95,6 +104,20 @@ func route_from_peer(peer: RefCounted, payload: PackedByteArray, channel: String
 
 
 func route(from: int, payload: PackedByteArray, channel: String, to: int) -> void:
+	# GameRush の hub の部屋と同じく、非ホストの全員宛てはホスト宛てとして読み、ほかの宛先は捨てる。
+	var host := _host_index()
+	if _room_topology == "hub" and from != host:
+		if to != -1 and to != host:
+			if from == _local_index:
+				_deliver_local.call_deferred(
+					{
+						"kind": "error",
+						"code": "targetNotAllowed",
+						"message": "In a hub room, only the host can be addressed.",
+					}
+				)
+			return
+		to = host
 	if channel == "unreliable" and _random.randf() < GRushMock.unreliable_drop_rate:
 		return
 	var seq := int(_outgoing_seq.get(from, 0)) + 1
@@ -306,12 +329,32 @@ func _join(params: Dictionary) -> Dictionary:
 	var requested: Variant = params.get("roomCode")
 	if requested != null and (not (requested is String) or _room_code_pattern.search(requested) == null):
 		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid room code.")
+	var config := _room_config_of(params)
+	if config.is_empty():
+		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid room capacity or topology.")
 	var has_target := params.has("targetRoomSize")
 	var target: Variant = params.get("targetRoomSize")
-	if has_target and not _is_target_room_size(target):
+	if has_target and not _is_target_room_size(target, int(config["max_peers"])):
 		return Result.failure(Result.CODE_INVALID_PARAMS, "Invalid target room size.")
-	if requested == null and has_target and _members.size() >= mini(int(target), GRushMock.max_peers):
+	if _members.is_empty():
+		_room_configured = false
+	var mismatched: bool = _room_configured and (
+		config["max_peers"] != _room_max_peers or config["topology"] != _room_topology
+	)
+	if mismatched:
+		# GameRush は部屋コードで指定した部屋が違う設定で既にあれば roomMismatch で断り、
+		# 部屋コードの無い join は設定の合う別の部屋へ振り分ける。
+		if requested != null:
+			return Result.failure(
+				Result.CODE_INVALID_PARAMS,
+				"The room already exists with a different capacity or topology."
+			)
 		_start_next_room()
+	_room_max_peers = int(config["max_peers"])
+	_room_topology = str(config["topology"])
+	if requested == null and has_target and _members.size() >= mini(int(target), _capacity()):
+		_start_next_room()
+	_room_configured = true
 	var index := _next_free_index()
 	if index < 0:
 		return Result.failure(Result.CODE_UNAVAILABLE, "The mock room is full.")
@@ -335,14 +378,38 @@ func _join(params: Dictionary) -> Dictionary:
 		"epoch": 1,
 		"transport": "ws",
 		"serverTimeMs": Time.get_unix_time_from_system() * 1000.0,
+		"maxPeers": _room_max_peers,
+		"topology": _room_topology,
 	})
 
 
 # JSON を通った数は float で届くので、値が整数なら通す。
-static func _is_target_room_size(value: Variant) -> bool:
+static func _is_whole_between(value: Variant, low: int, high: int) -> bool:
 	if not (value is int or value is float):
 		return false
-	return value == floorf(value) and value >= 1 and value <= MAX_TARGET_ROOM_SIZE
+	return value == floorf(value) and value >= low and value <= high
+
+
+static func _is_target_room_size(value: Variant, max_peers: int) -> bool:
+	return _is_whole_between(value, 1, max_peers)
+
+
+# GameRush と同じく、省略は 8 人の mesh。範囲の外・知らない形・mesh の上限を超える定員は空の Dictionary。
+static func _room_config_of(params: Dictionary) -> Dictionary:
+	var capacity: Variant = params.get("maxPeers", DEFAULT_MAX_PEERS)
+	if not _is_whole_between(capacity, 1, MAX_PEERS_LIMIT):
+		return {}
+	var shape: Variant = params.get("topology", "mesh")
+	if not (shape is String) or not TOPOLOGIES.has(shape):
+		return {}
+	if shape == "mesh" and int(capacity) > MESH_MAX_PEERS:
+		return {}
+	return {"max_peers": int(capacity), "topology": shape}
+
+
+# 作者が満員を試すために GRushMock.max_peers を下げていれば、部屋の定員より小さくても効かせる。
+func _capacity() -> int:
+	return mini(_room_max_peers, GRushMock.max_peers)
 
 
 # モックの部屋は1つなので、部屋が目安に届いていれば、どの部屋も目安以上だったことにする。
@@ -352,6 +419,7 @@ func _start_next_room() -> void:
 	_outgoing_seq.clear()
 	_room_serial += 1
 	_room_code = "MOCKROOM%d" % _room_serial
+	_room_configured = false
 
 
 func _leave() -> void:
@@ -361,7 +429,14 @@ func _leave() -> void:
 	_members = _members.filter(func(entry: Dictionary) -> bool: return entry["index"] != leaving)
 	_outgoing_seq.erase(leaving)
 	_local_index = -1
+	_forget_config_if_empty()
 	_announce("peerleave", leaving, {})
+
+
+# 部屋が空になったら定員と形を忘れ、次に入る join の設定で部屋を作り直す。
+func _forget_config_if_empty() -> void:
+	if _members.is_empty():
+		_room_configured = false
 
 
 func _announce(kind: String, subject: int, peer: Dictionary) -> void:
@@ -382,7 +457,7 @@ func _deliver_local(event: Dictionary) -> void:
 
 
 func _next_free_index() -> int:
-	for index in range(GRushMock.max_peers):
+	for index in range(_capacity()):
 		var taken := _members.filter(
 			func(entry: Dictionary) -> bool: return int(entry["index"]) == index
 		)
@@ -392,10 +467,12 @@ func _next_free_index() -> int:
 
 
 func _host_index() -> int:
-	var host := GRushMock.max_peers
+	var host := -1
 	for entry in _members:
-		host = min(host, int(entry["index"]))
-	return 0 if host == GRushMock.max_peers else host
+		var index := int(entry["index"])
+		if host < 0 or index < host:
+			host = index
+	return maxi(host, 0)
 
 
 func _peer_wire(index: int) -> Dictionary:

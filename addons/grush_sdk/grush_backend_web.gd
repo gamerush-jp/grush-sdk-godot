@@ -430,4 +430,10 @@ static func _to_js(params: Dictionary) -> JavaScriptObject:
 		object.roomCode = params["roomCode"]
 	if params.has("targetRoomSize"):
 		object.targetRoomSize = params["targetRoomSize"]
+	if params.has("maxPeers"):
+		object.maxPeers = params["maxPeers"]
+	if params.has("topology"):
+		object.topology = params["topology"]
+	if params.has("hostSelection"):
+		object.hostSelection = params["hostSelection"]
 	return object
