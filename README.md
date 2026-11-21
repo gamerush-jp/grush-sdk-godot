@@ -66,9 +66,9 @@ if launched["ok"] and launched["value"]["invite"] != null:
 
 `GRush.net.invite()` は引数を取らない。GameRush が相互フォローの相手を選ぶシートを出し、今入っている部屋へ招く。ゲームは部屋も相手も選べず、受け取るのは `{"status": "sent" か "cancelled", "count": int}` だけ。`"sent"` は1人以上へ送った、`"cancelled"` は送らずに閉じた（`count` は 0）。選べるのは部屋の空いた席の数と 30 人の小さいほうまで。シートを出している間もゲームは止まらず、部屋の相手との対戦は続く。
 
-部屋に居なければ `unavailable`、ゲストなら `signInRequired`、続けて呼ぶと `rateLimited`。シートを出せない面（埋め込みなど）と古い GameRush（`protocol_version` 13 未満）と GameRush の外では `unsupported`。
+部屋に居なければ `unavailable`、ゲストなら `signInRequired`、5 秒に 1 回より多く呼ぶと `rateLimited`。シートを出せない面（埋め込みなど）と古い GameRush（`protocol_version` 13 未満）と GameRush の外では `unsupported`。GameRush が招待を送れなかったとき（GameRush のサーバの招待の上限・空いた席の不足・部屋を出たなど）は、シートの中に理由が出る。ゲームへエラーは返らず、閉じると `"cancelled"` が返る。
 
-招かれた人が通知から開くと、そのゲームの `GRush.launch` の `invite` に `{"mode": String, "room_code": String}` が入る（ほかは `null`）。そのまま `join(mode, room_code)` に渡すと招いた人の部屋へ入る。定員と形は部屋のものになるので、`join_with` で渡さなくてよい。
+招かれた人が通知から開くと、そのゲームの `GRush.launch` の `invite` に `{"mode": String, "room_code": String}` が入る（ほかは `null`）。そのまま `join(mode, room_code)` に渡すと招いた人の部屋へ入る。招待の mode と部屋コードの `join` は招待の部屋にだけ入り、招いた人が部屋を出た・満員・招待の期限（15 分）が切れたときは、新しい部屋を作らずに `unavailable`。招待の部屋への join は `join_with` の `max_peers`・`topology` を見ず、部屋の定員と形で入る。別のゲームへスワイプしてから戻った後の join は招待の join にならず、部屋コードを渡した普通の join になる。
 
 すべての API は `{"ok": bool, "value": Variant, "code": String, "message": String}` を返し、例外を投げない（アナリティクスは `bool` を返す。下記）。GameRush の外で動かした場合は `ok` が `false`、`code` が `"unsupported"` になるだけで、ゲームは止まらない。
 

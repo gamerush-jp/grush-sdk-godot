@@ -333,8 +333,6 @@ func _set_consent(value: bool) -> void:
 	config.save(STATE_PATH)
 
 
-# GameRush と同じく、今の部屋を先に抜け、失敗しても戻らない。形の誤りはゲームが直すので invalidParams、
-# 埋まった部屋は待てば入れるので unavailable で返す。
 # GameRush の招待のシートの代わり。偽のフレンドを GRushMock.invite_count 人選んで送ったことにする。どこへも送らない。
 func _invite() -> Dictionary:
 	if _local_index < 0:
@@ -349,6 +347,8 @@ func _invite() -> Dictionary:
 	return Result.ok({"status": "sent", "count": count})
 
 
+# GameRush と同じく、今の部屋を先に抜け、失敗しても戻らない。形の誤りはゲームが直すので invalidParams、
+# 埋まった部屋は待てば入れるので unavailable で返す。
 func _join(params: Dictionary) -> Dictionary:
 	_leave()
 	var mode: Variant = params.get("mode", "default")

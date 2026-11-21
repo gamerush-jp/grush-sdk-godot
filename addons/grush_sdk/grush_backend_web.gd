@@ -102,9 +102,7 @@ func _invoke(method: String, params: Dictionary) -> Variant:
 				return null
 			return net.join(_to_js(params))
 		"net.invite":
-			if net == null or net.invite == null:
-				return null
-			return net.invite()
+			return _invite_of(net)
 		"net.leave":
 			var leaving := _room
 			_release_room()
@@ -228,6 +226,14 @@ static func _shim() -> JavaScriptObject:
 		JavaScriptBridge.eval(SHIM_JS, true)
 		_shim_installed = true
 	return JavaScriptBridge.get_interface("__grushSdkShim")
+
+
+# net.invite を呼ぶ。版数 13 未満のランタイムの GRushNet は invite を持たないので、そのときは呼ばずに null
+# （unsupported）を返す。get と call は JavaScriptObject のプロパティと関数をそのまま引く。
+static func _invite_of(net: Variant) -> Variant:
+	if net == null or net.get("invite") == null:
+		return null
+	return net.call("invite")
 
 
 static func _js_value(value: Variant) -> Variant:
