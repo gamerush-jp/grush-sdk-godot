@@ -32,7 +32,7 @@ static var launch_params: Dictionary = {}
 ## `GRush.launch` の `invite` に入れる招待の部屋。`{"mode": String, "room_code": String}` を入れると、
 ## 招待から開いたときを試せる。形が join の規則に合わなければ null として返す。既定 null。
 static var launch_invite: Variant = null
-## `GRush.net.invite()` の答え。"cancelled" にすると、送らずにシートを閉じたことにする。
+## `GRush.net.invite()` の答え。"cancelled" のときだけ送らずにシートを閉じたことにし、ほかの値では送ったことにする。
 ## 部屋に居なければ unavailable、[member signed_in] が false なら signInRequired で、この設定によらない。
 static var invite_status := "sent"
 ## `GRush.net.invite()` で偽のフレンドへ送ったことにする人数。部屋の空いた席の数と 30 の小さいほうまでに絞り、

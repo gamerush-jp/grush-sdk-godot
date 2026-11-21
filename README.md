@@ -64,11 +64,11 @@ if launched["ok"] and launched["value"]["invite"] != null:
     # 招いた人が抜けた・満員・招待の期限（15 分）が切れたときは unavailable
 ```
 
-`GRush.net.invite()` は引数を取らない。GameRush が相互フォローの相手を選ぶシートを出し、今入っている部屋へ招く。ゲームは部屋も相手も選べず、受け取るのは `{"status": "sent" か "cancelled", "count": int}` だけ。`"sent"` は1人以上へ送った、`"cancelled"` は送らずに閉じた（`count` は 0）。選べるのは部屋の空いた席の数と 30 人の小さいほうまで。シートを出している間もゲームは止まらず、部屋の相手との対戦は続く。
+`GRush.net.invite()` は引数を取らない。GameRush が相互フォローの相手を選ぶシートを出し、今入っている部屋へ招く。ゲームは部屋も相手も選べず、受け取るのは `{"status": "sent" か "cancelled", "count": int}` だけ。`"sent"` は1人以上へ送った、`"cancelled"` は送らずに閉じた（`count` は 0）。選べるのは部屋の空いた席の数と 30 人の小さいほうまで。シートを出している間もゲームは止まらず、部屋の相手との対戦は続く。シートを出せないときは、出さずにすぐ `"cancelled"` が返る。ゲームのスライドが前面にないとき・プレイヤーが別の画面（閲覧など）を見ているとき、送らずに閉じたスライドで閉じてから 60 秒の間がそう。
 
 部屋に居なければ `unavailable`、ゲストなら `signInRequired`、5 秒に 1 回より多く呼ぶと `rateLimited`。シートを出せない面（埋め込みなど）と古い GameRush（`protocol_version` 13 未満）と GameRush の外では `unsupported`。GameRush が招待を送れなかったとき（GameRush のサーバの招待の上限・空いた席の不足・部屋を出たなど）は、シートの中に理由が出る。ゲームへエラーは返らず、閉じると `"cancelled"` が返る。
 
-招かれた人が通知から開くと、そのゲームの `GRush.launch` の `invite` に `{"mode": String, "room_code": String}` が入る（ほかは `null`）。そのまま `join(mode, room_code)` に渡すと招いた人の部屋へ入る。招待の mode と部屋コードの `join` は招待の部屋にだけ入り、招いた人が部屋を出た・満員・招待の期限（15 分）が切れたときは、新しい部屋を作らずに `unavailable`。招待の部屋への join は `join_with` の `max_peers`・`topology` を見ず、部屋の定員と形で入る。別のゲームへスワイプしてから戻った後の join は招待の join にならず、部屋コードを渡した普通の join になる。
+招かれた人が通知から開くと、そのゲームの `GRush.launch` の `invite` に `{"mode": String, "room_code": String}` が入る（ほかは `null`）。そのまま `join(mode, room_code)` に渡すと招いた人の部屋へ入る。招待の mode と部屋コードの `join` は招待の部屋にだけ入り、招いた人が部屋を出た・満員・招待の期限（15 分）が切れたときは、新しい部屋を作らずに `unavailable`。招待の部屋への join は `join_with` の `max_peers`・`topology` を見ず、部屋の定員と形で入る。招待で一度部屋に入った後の join（部屋の寿命や切断の後の入り直し）は招待の join にならず、部屋コードを渡した普通の join になる。別のゲームへスワイプしてから戻った後の join も同じ。
 
 すべての API は `{"ok": bool, "value": Variant, "code": String, "message": String}` を返し、例外を投げない（アナリティクスは `bool` を返す。下記）。GameRush の外で動かした場合は `ok` が `false`、`code` が `"unsupported"` になるだけで、ゲームは止まらない。
 
@@ -286,7 +286,7 @@ GRushMockPlayerStates.preview("mock-rival-1", {"deck": "fire", "level": 12})
 
 起動パラメータのモックは `GRushMock.launch_params`（既定 `{}`。例 `GRushMock.launch_params = {"item": "sword"}`）をそのまま返す。GameRush の制限では確かめない。
 
-招待のモックはシートを出さず、偽のフレンドへ送ったことにする。`GRush.net.invite()` は、部屋に居なければ `unavailable`、`GRushMock.signed_in = false` なら `signInRequired` を返し、ほかは `GRushMock.invite_count`（既定 1）人へ送ったことにして `"sent"` を返す。人数は部屋の空いた席の数と 30 の小さいほうまでに絞り、0 になれば `"cancelled"`。`GRushMock.invite_status = "cancelled"` で送らずに閉じたことにする。招待から開いたときを試すには、`GRushMock.launch_invite = {"mode": "duel", "room_code": "ABCD23"}` を入れる。`GRush.launch` の `invite` に載り、形が join の規則に合わなければ `null` になる（既定 `null`）。
+招待のモックはシートを出さず、偽のフレンドへ送ったことにする。`GRush.net.invite()` は、部屋に居なければ `unavailable`、`GRushMock.signed_in = false` なら `signInRequired` を返し、ほかは `GRushMock.invite_count`（既定 1）人へ送ったことにして `"sent"` を返す。人数は部屋の空いた席の数と 30 の小さいほうまでに絞り、0 になれば `"cancelled"`。`GRushMock.invite_status = "cancelled"` で送らずに閉じたことにする。招待から開いたときを試すには、`GRushMock.launch_invite = {"mode": "duel", "room_code": "ABCD23"}` を入れる。`GRush.launch` の `invite` に載り、形が join の規則に合わなければ `null` になる（既定 `null`）。モックは招待の join を再現しない。`launch_invite` の部屋へ join すると、GameRush と違い、招いた人の居ない新しい部屋になる。
 
 共有のモックは確認シートを出さず、`GRushMock.share_status`（既定 `"opened"`）を返す。`GRushMock.share_available = false` で共有できない環境を試せる。起動パラメータは GameRush と同じ制限で確かめ、合わなければ `invalidParams`。本文と画像の検査はしない。
 

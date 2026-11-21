@@ -341,7 +341,7 @@ func _invite() -> Dictionary:
 		return Result.failure(Result.CODE_SIGN_IN_REQUIRED, "Sign-in is required to invite.")
 	var seats := maxi(0, _capacity() - _members.size())
 	var count := mini(mini(GRushMock.invite_count, seats), INVITE_MAX_RECIPIENTS)
-	if GRushMock.invite_status != "sent" or count <= 0:
+	if GRushMock.invite_status == "cancelled" or count <= 0:
 		return Result.ok({"status": "cancelled", "count": 0})
 	print("[GRushMock] invited %d friend(s) to the room" % count)
 	return Result.ok({"status": "sent", "count": count})

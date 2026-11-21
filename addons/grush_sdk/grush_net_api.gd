@@ -89,7 +89,9 @@ func join_with(options: Dictionary = {}) -> Dictionary:
 ## value は [code]{"status": "sent" か "cancelled", "count": int}[/code]。[code]"sent"[/code] は1人以上へ送った、
 ## [code]"cancelled"[/code] は送らずに閉じた（[code]count[/code] は 0）。誰へ送ったかはゲームへ渡らない。
 ## 招かれた人が通知から開くと、[code]GRush.launch[/code] の [code]invite[/code] にこの部屋が入る。
-## [br]シートを出している間もゲームは止まらず、部屋の相手との対戦は続く。
+## [br]シートを出している間もゲームは止まらず、部屋の相手との対戦は続く。ゲームのスライドが前面にないとき・
+## プレイヤーが別の画面（閲覧など）を見ているとき、送らずに閉じたスライドで閉じてから 60 秒の間は、シートを出さずに
+## すぐ cancelled を返す。
 ## 部屋に居なければ unavailable、ゲストなら signInRequired、5 秒に 1 回より多く呼ぶと rateLimited。
 ## GameRush が送れなかったとき（招待の上限・空いた席の不足など）はシートの中に理由が出て、閉じると cancelled。
 ## シートを出せない面（埋め込みなど）と、ランタイムの版数が [constant INVITE_PROTOCOL_VERSION] 未満のときと
@@ -105,7 +107,8 @@ func invite() -> Dictionary:
 	var raw: Variant = response["value"]
 	if not (raw is Dictionary):
 		return Result.failure(Result.CODE_INTERNAL, "GameRush returned an unreadable invite result.")
-	# JSON を通った数は float で届くので、整数の値なら人数として読む。
+	# 送ったと読むのは status が sent で人数が正の整数のときだけで、ほかの形は cancelled に読む（JavaScript と Unity の
+	# SDK と同じ）。JSON を通った数は float で届くので、整数の値なら人数として読む。
 	var count: Variant = raw.get("count")
 	var sent: bool = (
 		str(raw.get("status", "")) == "sent"
