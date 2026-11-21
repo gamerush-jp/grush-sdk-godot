@@ -43,7 +43,18 @@ static func snapshot_of(value: Variant) -> Variant:
 	for key in raw:
 		if raw[key] is String:
 			params[str(key)] = raw[key]
-	return {"params": params}
+	return {"params": params, "invite": invite_of(parsed.get("invite"))}
+
+
+# 招待から開いたときの部屋。版数 13 未満のランタイムは送らないので null になる。
+static func invite_of(value: Variant) -> Variant:
+	if not (value is Dictionary):
+		return null
+	var mode: Variant = value.get("mode")
+	var room_code: Variant = value.get("roomCode")
+	if not (mode is String) or mode == "" or not (room_code is String) or room_code == "":
+		return null
+	return {"mode": mode, "room_code": room_code}
 
 
 static func _shim() -> JavaScriptObject:

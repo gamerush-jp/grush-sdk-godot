@@ -8,8 +8,10 @@ const Manifest := preload("res://addons/grush_sdk/grush_mock_manifest.gd")
 
 const STATE_PATH := GRushMock.STATE_PATH
 const STATE_SECTION := GRushMock.STATE_SECTION
-# モックが実装している一番新しい機能（作者のアイテム販売）の版数。
-const MOCK_PROTOCOL_VERSION := 12
+# モックが実装している一番新しい機能（部屋への招待）の版数。
+const MOCK_PROTOCOL_VERSION := 13
+# 1回の招待で選べる人数の上限。
+const INVITE_MAX_RECIPIENTS := 30
 # GameRush と同じ mode と部屋コードの形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const MODE_PATTERN := "^[A-Za-z0-9._:-]{1,32}\\z"
 const ROOM_CODE_PATTERN := "^[A-Za-z0-9]{4,12}\\z"
@@ -159,6 +161,8 @@ func _handle(method: String, params: Dictionary) -> Dictionary:
 			return Result.ok(_player_wire(false))
 		"net.join":
 			return _join(params)
+		"net.invite":
+			return _invite()
 		"net.leave":
 			_leave()
 			return Result.ok(null)
@@ -331,6 +335,20 @@ func _set_consent(value: bool) -> void:
 
 # GameRush と同じく、今の部屋を先に抜け、失敗しても戻らない。形の誤りはゲームが直すので invalidParams、
 # 埋まった部屋は待てば入れるので unavailable で返す。
+# GameRush の招待のシートの代わり。偽のフレンドを GRushMock.invite_count 人選んで送ったことにする。どこへも送らない。
+func _invite() -> Dictionary:
+	if _local_index < 0:
+		return Result.failure(Result.CODE_UNAVAILABLE, "Join a room before inviting.")
+	if not GRushMock.signed_in:
+		return Result.failure(Result.CODE_SIGN_IN_REQUIRED, "Sign-in is required to invite.")
+	var seats := maxi(0, _capacity() - _members.size())
+	var count := mini(mini(GRushMock.invite_count, seats), INVITE_MAX_RECIPIENTS)
+	if GRushMock.invite_status != "sent" or count <= 0:
+		return Result.ok({"status": "cancelled", "count": 0})
+	print("[GRushMock] invited %d friend(s) to the room" % count)
+	return Result.ok({"status": "sent", "count": count})
+
+
 func _join(params: Dictionary) -> Dictionary:
 	_leave()
 	var mode: Variant = params.get("mode", "default")

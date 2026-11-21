@@ -4,7 +4,7 @@ GameRush の GameAPI を Godot 4 から呼ぶアドオン。ビルドの書き�
 
 ## 導入
 
-[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.14.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
+[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.15.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
 
 書き出しは Web。それ以外のプラットフォームでは自動的にモックへ落ちる。
 
@@ -47,6 +47,28 @@ hub の部屋の非ホストが送れるのは、ホスト宛てと全員宛て�
 送れる数は毎秒、定員 8 以下の mesh で 30 通、定員 9 以上の mesh と hub の非ホストで 20 通。hub のホストは人数に応じて増える。超えた分は `"rateLimited"` で捨てられる。
 
 `max_peers`・`topology`・`host_selection` のどれかを渡したとき、古い GameRush（`protocol_version` 11 未満）では `unsupported`。定員と形を知らない古いアプリの GameRush は、それらを無視して 8 人の mesh の部屋へ入る（`target_room_size` が 9 以上なら `invalidParams`）。入った部屋の実際の定員と形は `room.max_peers` と `room.topology` で確かめる。`protocol_version` 11 未満では 8 と `"mesh"`。`room_code` で指定した部屋が違う定員か形で既にあるときは `invalidParams`。
+
+### フレンドを部屋へ招く
+
+```gdscript
+# 部屋に入った後、「フレンドを招く」ボタンから
+var invited: Dictionary = await GRush.net.invite()
+if invited["ok"] and invited["value"]["status"] == "sent":
+    show_toast("%d 人を招待しました" % invited["value"]["count"])
+
+# 招待から開いたときは、起動パラメータに部屋が入っている
+var launched: Dictionary = await GRush.launch.fetch()
+if launched["ok"] and launched["value"]["invite"] != null:
+    var invite: Dictionary = launched["value"]["invite"]
+    var joined: Dictionary = await GRush.net.join(invite["mode"], invite["room_code"])
+    # 招いた人が抜けた・満員・招待の期限（15 分）が切れたときは unavailable
+```
+
+`GRush.net.invite()` は引数を取らない。GameRush が相互フォローの相手を選ぶシートを出し、今入っている部屋へ招く。ゲームは部屋も相手も選べず、受け取るのは `{"status": "sent" か "cancelled", "count": int}` だけ。`"sent"` は1人以上へ送った、`"cancelled"` は送らずに閉じた（`count` は 0）。選べるのは部屋の空いた席の数と 30 人の小さいほうまで。シートを出している間もゲームは止まらず、部屋の相手との対戦は続く。
+
+部屋に居なければ `unavailable`、ゲストなら `signInRequired`、続けて呼ぶと `rateLimited`。シートを出せない面（埋め込みなど）と古い GameRush（`protocol_version` 13 未満）と GameRush の外では `unsupported`。
+
+招かれた人が通知から開くと、そのゲームの `GRush.launch` の `invite` に `{"mode": String, "room_code": String}` が入る（ほかは `null`）。そのまま `join(mode, room_code)` に渡すと招いた人の部屋へ入る。定員と形は部屋のものになるので、`join_with` で渡さなくてよい。
 
 すべての API は `{"ok": bool, "value": Variant, "code": String, "message": String}` を返し、例外を投げない（アナリティクスは `bool` を返す。下記）。GameRush の外で動かした場合は `ok` が `false`、`code` が `"unsupported"` になるだけで、ゲームは止まらない。
 
@@ -198,7 +220,7 @@ if launched["ok"]:
         open_item(item)
 ```
 
-GameRush の URL に `gp.` を付けて載せたキーと値を読む。ゲームのページの URL が `/g/<コード>?gp.item=sword&gp.stage=3` なら `value` は `{"params": {"item": "sword", "stage": "3"}}`（キーも値も `String`）。シェアしたリンクから特定のアイテムやステージへ飛ばすのに使う。
+GameRush の URL に `gp.` を付けて載せたキーと値を読む。ゲームのページの URL が `/g/<コード>?gp.item=sword&gp.stage=3` なら `value` は `{"params": {"item": "sword", "stage": "3"}, "invite": null}`（キーも値も `String`）。`invite` は招待から開いたときの部屋（上の「フレンドを部屋へ招く」）。シェアしたリンクから特定のアイテムやステージへ飛ばすのに使う。
 
 **値を信用しない。** リンクは誰でも作れる。アイテムが存在するか・プレイヤーが持っているか・ステージが解放済みかをゲームの側で確かめ、確かめられなければ無視する。
 
@@ -264,9 +286,11 @@ GRushMockPlayerStates.preview("mock-rival-1", {"deck": "fire", "level": 12})
 
 起動パラメータのモックは `GRushMock.launch_params`（既定 `{}`。例 `GRushMock.launch_params = {"item": "sword"}`）をそのまま返す。GameRush の制限では確かめない。
 
+招待のモックはシートを出さず、偽のフレンドへ送ったことにする。`GRush.net.invite()` は、部屋に居なければ `unavailable`、`GRushMock.signed_in = false` なら `signInRequired` を返し、ほかは `GRushMock.invite_count`（既定 1）人へ送ったことにして `"sent"` を返す。人数は部屋の空いた席の数と 30 の小さいほうまでに絞り、0 になれば `"cancelled"`。`GRushMock.invite_status = "cancelled"` で送らずに閉じたことにする。招待から開いたときを試すには、`GRushMock.launch_invite = {"mode": "duel", "room_code": "ABCD23"}` を入れる。`GRush.launch` の `invite` に載り、形が join の規則に合わなければ `null` になる（既定 `null`）。
+
 共有のモックは確認シートを出さず、`GRushMock.share_status`（既定 `"opened"`）を返す。`GRushMock.share_available = false` で共有できない環境を試せる。起動パラメータは GameRush と同じ制限で確かめ、合わなければ `invalidParams`。本文と画像の検査はしない。
 
-アナリティクスのモックは、GameRush と同じ検査をして、通ったイベントを1件ずつ出力し、直近の 200 件を `GRushMock.analytics_events`（GameRush へ渡すのと同じ形の Dictionary の配列）に持つ。弾いたイベントは、GameRush と同じく理由ごとに1回だけ警告する。前面に出るまでの 30 件の溜め・本体の上限・同じステップを最初の1回だけ残す扱い・セッションあたりの上限は再現しないので、モックでは `true` の分がすべて記録に残る。どこへも送らない。モックが名乗る `protocol_version` は 12。モックを使うのは Web 以外の書き出しとエディタだけで、Web の書き出しを GameRush の外で開いたときは、どの呼び出しも `false` になる。
+アナリティクスのモックは、GameRush と同じ検査をして、通ったイベントを1件ずつ出力し、直近の 200 件を `GRushMock.analytics_events`（GameRush へ渡すのと同じ形の Dictionary の配列）に持つ。弾いたイベントは、GameRush と同じく理由ごとに1回だけ警告する。前面に出るまでの 30 件の溜め・本体の上限・同じステップを最初の1回だけ残す扱い・セッションあたりの上限は再現しないので、モックでは `true` の分がすべて記録に残る。どこへも送らない。モックが名乗る `protocol_version` は 13。モックを使うのは Web 以外の書き出しとエディタだけで、Web の書き出しを GameRush の外で開いたときは、どの呼び出しも `false` になる。
 
 相手探し・受信箱・交換所のモックは、`GRushMock.RIVALS` の 3 人の相手を持つ。相手はそれぞれ rating 付きの公開プレイヤー状態を持ち、届いたメッセージを同じ kind と payload で送り返す。はじめと `GRushMockInbox.reset()` / `GRushMockTrades.reset()` の後は、最初の相手からのメッセージ1通と、相手の受付中の出品を2件持つ。payload・offer・want・give の形、`operation_id` での冪等、受付中の出品の上限、受諾の `outcome`、`pending` と ack は GameRush と同じ規則で動く（バイト数は Godot の `JSON.stringify` で数えるので、`3.0` のような小数点の付く数値を GameRush より多く数えることがある）。通報を承諾すると（`GRushMock.confirm_inbox_report` / `confirm_trade_report`、既定 `true`）相手をブロックし、その相手のメッセージと出品は見えなくなる。プレイヤー状態の通報は伏せていない状態にだけ届き、確認の答えを `GRushMock.confirm_player_state_report`（既定 `true`）で決める。
 

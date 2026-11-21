@@ -29,6 +29,15 @@ static var locale := ""
 ## `GRush.launch` が返す起動パラメータ（`gp.` を除いたキーと値。どちらも String）。
 ## GameRush の制限（キー・値の形と 8 個まで）では確かめずにそのまま返す。
 static var launch_params: Dictionary = {}
+## `GRush.launch` の `invite` に入れる招待の部屋。`{"mode": String, "room_code": String}` を入れると、
+## 招待から開いたときを試せる。形が join の規則に合わなければ null として返す。既定 null。
+static var launch_invite: Variant = null
+## `GRush.net.invite()` の答え。"cancelled" にすると、送らずにシートを閉じたことにする。
+## 部屋に居なければ unavailable、[member signed_in] が false なら signInRequired で、この設定によらない。
+static var invite_status := "sent"
+## `GRush.net.invite()` で偽のフレンドへ送ったことにする人数。部屋の空いた席の数と 30 の小さいほうまでに絞り、
+## 0 になれば "cancelled" を返す。
+static var invite_count := 1
 ## モックが受けた分析イベント。GameRush へ渡すのと同じ形の Dictionary で、直近の 200 件を古い順に持つ。
 ## 空にするときは clear() する。
 static var analytics_events: Array[Dictionary] = []

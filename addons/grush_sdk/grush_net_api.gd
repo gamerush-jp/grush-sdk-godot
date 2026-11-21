@@ -11,6 +11,9 @@ const ROOM_CONFIG_PROTOCOL_VERSION := 11
 const TOPOLOGY_MESH := "mesh"
 ## [method join_with] で渡せる部屋の形。非ホストはホストへだけ送り、ホストが全員へ配る。
 const TOPOLOGY_HUB := "hub"
+## 部屋への招待（[method invite]）と、招待から開いたときの部屋（[code]GRush.launch[/code] の
+## [code]invite[/code]）を持つランタイムの版数。
+const INVITE_PROTOCOL_VERSION := 13
 
 var room: GRushRoom = null
 
@@ -78,6 +81,38 @@ func join_with(options: Dictionary = {}) -> Dictionary:
 	if needs_room_config and _grush.protocol_version() < ROOM_CONFIG_PROTOCOL_VERSION:
 		return Result.unsupported()
 	return await _join(params)
+
+
+## 今いる部屋へ、相互フォローの相手を招く。GameRush が相手を選ぶシートを出し、プレイヤーが送るか閉じると返る。
+## 招く部屋は今入っている部屋で、ゲームは部屋も相手も選べず、送った人数だけを受け取る。
+## 選べるのは部屋の空いた席の数と 30 人の小さいほうまで。
+## value は [code]{"status": "sent" か "cancelled", "count": int}[/code]。[code]"sent"[/code] は1人以上へ送った、
+## [code]"cancelled"[/code] は送らずに閉じた（[code]count[/code] は 0）。誰へ送ったかはゲームへ渡らない。
+## 招かれた人が通知から開くと、[code]GRush.launch[/code] の [code]invite[/code] にこの部屋が入る。
+## [br]シートを出している間もゲームは止まらず、部屋の相手との対戦は続く。
+## 部屋に居なければ unavailable、ゲストなら signInRequired、続けて呼ぶと rateLimited。
+## シートを出せない面（埋め込みなど）と、ランタイムの版数が [constant INVITE_PROTOCOL_VERSION] 未満のときと
+## GameRush の外では unsupported。
+func invite() -> Dictionary:
+	if not _grush.is_available() or _grush.protocol_version() < INVITE_PROTOCOL_VERSION:
+		return Result.unsupported()
+	var pending := Call.new()
+	_backend.call_api("net.invite", {}, func(result: Dictionary) -> void: pending.resolve(result))
+	var response: Dictionary = await pending.completed
+	if not response["ok"]:
+		return response
+	var raw: Variant = response["value"]
+	if not (raw is Dictionary):
+		return Result.failure(Result.CODE_INTERNAL, "GameRush returned an unreadable invite result.")
+	# JSON を通った数は float で届くので、整数の値なら人数として読む。
+	var count: Variant = raw.get("count")
+	var sent: bool = (
+		str(raw.get("status", "")) == "sent"
+		and (count is int or count is float)
+		and count == floorf(count)
+		and count > 0
+	)
+	return Result.ok({"status": "sent" if sent else "cancelled", "count": int(count) if sent else 0})
 
 
 func _join(params: Dictionary) -> Dictionary:

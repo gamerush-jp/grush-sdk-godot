@@ -101,6 +101,10 @@ func _invoke(method: String, params: Dictionary) -> Variant:
 			if net == null:
 				return null
 			return net.join(_to_js(params))
+		"net.invite":
+			if net == null or net.invite == null:
+				return null
+			return net.invite()
 		"net.leave":
 			var leaving := _room
 			_release_room()
@@ -291,6 +295,8 @@ func _value_of(method: String, value: Variant) -> Variant:
 		"inbox.list", "trade.list", "trade.mine", "trade.accept":
 			return _gd_value(value)
 		"shop.products", "shop.pending", "shop.owned":
+			return _gd_value(value)
+		"net.invite":
 			return _gd_value(value)
 	return null
 

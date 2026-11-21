@@ -29,8 +29,11 @@ func _init(grush: Node, transport: RefCounted) -> void:
 	_transport = transport
 
 
-## 起動パラメータが届くまで待って返す。value は `{"params": Dictionary}`（キーも値も String）。
-## パラメータの無い起動では `params` が空。
+## 起動パラメータが届くまで待って返す。value は `{"params": Dictionary, "invite": Dictionary か null}`
+## （`params` のキーも値も String）。パラメータの無い起動では `params` が空。
+## `invite` は、招待（[code]GRush.net.invite()[/code]）から開いたときの、招いた人の部屋
+## `{"mode": String, "room_code": String}`。[code]GRush.net.join(invite["mode"], invite["room_code"])[/code] で
+## その部屋へ入る。招待の通知から開いたスライドだけが持ち、ほかと、版数 13 未満のランタイムでは null。
 func fetch() -> Dictionary:
 	if not _supported():
 		return Result.unsupported()
@@ -39,7 +42,7 @@ func fetch() -> Dictionary:
 	return await pending.completed
 
 
-## 届いていれば `{"params": Dictionary}`、まだなら null。
+## 届いていれば `{"params": Dictionary, "invite": Dictionary か null}`、まだなら null。
 func current() -> Variant:
 	if not _supported():
 		return null
