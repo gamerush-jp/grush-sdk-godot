@@ -3,7 +3,8 @@ extends RefCounted
 
 ## エディタ用のアイテム販売。[member products] を売り、[code]GRush.shop.purchase[/code] は決済の画面へ移らずに
 ## その場で付与を pending に積んで `redirecting` を返し、[code]GRush.shop.pending_received[/code] を後のフレームで
-## 起こす。sku の形・ack の id（1〜100 件の UUID）・持っている商品の `alreadyOwned` は GameRush と同じ規則で弾く。
+## 起こす。sku の形・ack の id（1〜100 件の UUID）・持っている買い切りの商品の `alreadyOwned` は GameRush と同じ
+## 規則で弾く。消費の商品は GameRush と同じく何度でも買え、[code]GRush.shop.owned[/code] に入らない。
 ## 付与はプロセスの中だけに持ち、[method reset] で消える。
 
 const Result := preload("res://addons/grush_sdk/grush_result.gd")
@@ -11,16 +12,19 @@ const ShopApi := preload("res://addons/grush_sdk/grush_shop_api.gd")
 
 const MAX_ACK_IDS := ShopApi.MAX_ACK_IDS
 
-## 売っている商品。[code]GRush.shop.products[/code] が返すのと同じ形（`sku`・`name`・`price_jpy`）の Dictionary。
+## 売っている商品。[code]GRush.shop.products[/code] が返すのと同じ形（`sku`・`name`・`price_jpy`・`type`）の
+## Dictionary。`type` は `"permanent"`（買い切り）か `"consumable"`（消費）で、省くと `"permanent"`。
 ## 形は確かめずにそのまま返す。
 static var products: Array = [
 	{"sku": "starter_pack", "name": "Starter Pack", "price_jpy": 120},
 	{"sku": "remove_ads", "name": "Remove Ads", "price_jpy": 480},
 ]
-## false にすると、アプリと LINE の GameRush と同じく products が `enabled: false` の空の一覧になり、
+## false にすると、Android のアプリと LINE の GameRush と同じく products が `enabled: false` の空の一覧になり、
 ## purchase が unsupported になる。
 static var purchase_available := true
 ## purchase が返す答え。`"cancelled"` にすると、プレイヤーが決済をやめたときを試せる（付与は積まない）。
+## `"purchased"` にすると、iOS のアプリと同じく付与を pending に積んで `purchased` を返す（合図は起こさない）。
+## `"pending"` にすると、承認の待ちと同じく付与を積まずに `pending` を返す。
 static var purchase_status := "redirecting"
 
 static var _grants: Array = []
@@ -36,6 +40,7 @@ static var _next_pending_token := 1
 
 ## 決済を通さずに [param sku] の付与を pending に積み、合図を起こす。別の端末で買った分が届くのを試すのに使う。
 ## sku の形が合わなければ何もせず null、積めば付与（[code]GRush.shop.pending[/code] と同じ形）を返す。
+## [member products] の消費の商品の付与は [code]GRush.shop.owned[/code] に入らない。
 static func grant(sku: String) -> Variant:
 	if _sku_pattern.search(sku) == null:
 		return null
@@ -77,6 +82,7 @@ static func handle_products() -> Dictionary:
 					"sku": entry.get("sku", ""),
 					"name": entry.get("name", ""),
 					"priceJpy": entry.get("price_jpy", 0),
+					"type": ShopApi.type_of(entry.get("type")),
 				}
 			)
 	return Result.ok({"enabled": true, "products": listed})
@@ -92,13 +98,18 @@ static func handle_purchase(params: Dictionary) -> Dictionary:
 		return Result.failure(Result.CODE_SIGN_IN_REQUIRED, "Purchases require sign-in.")
 	if not _sells(sku):
 		return _invalid("Item not found.")
-	if _grants.any(func(entry: Dictionary) -> bool: return entry["sku"] == sku):
-		return Result.ok({"status": "alreadyOwned"})
-	if purchase_status != "redirecting":
+	# 買い切りの商品は、ack 済みを含め付与済みなら買えない。消費の商品は何度でも買える。
+	if not _consumable(sku) and _grants.any(func(entry: Dictionary) -> bool: return entry["sku"] == sku):
+		return Result.ok({"status": ShopApi.PURCHASE_ALREADY_OWNED})
+	if purchase_status == ShopApi.PURCHASE_PURCHASED:
+		# iOS のアプリは決済の画面へ移らないので、戻りの合図は無い。
+		_grant(sku)
+		return Result.ok({"status": ShopApi.PURCHASE_PURCHASED})
+	if purchase_status != ShopApi.PURCHASE_REDIRECTING:
 		return Result.ok({"status": purchase_status})
 	_grant(sku)
 	_signal(sku)
-	return Result.ok({"status": "redirecting"})
+	return Result.ok({"status": ShopApi.PURCHASE_REDIRECTING})
 
 
 static func handle_pending() -> Dictionary:
@@ -126,18 +137,29 @@ static func handle_ack(params: Dictionary) -> Dictionary:
 	return Result.ok({"acked": acked})
 
 
+# GameRush と同じく、消費のアイテムの付与は owned に入れない。
 static func handle_owned() -> Dictionary:
 	var grants: Array = []
 	for entry in _grants:
-		grants.append(_wire(entry, true))
+		if not bool(entry["consumable"]):
+			grants.append(_wire(entry, true))
 	return Result.ok({"grants": grants})
 
 
 static func _sells(sku: String) -> bool:
+	return _product(sku) != null
+
+
+static func _product(sku: String) -> Variant:
 	for entry in products:
 		if entry is Dictionary and entry.get("sku") == sku:
-			return true
-	return false
+			return entry
+	return null
+
+
+static func _consumable(sku: String) -> bool:
+	var product: Variant = _product(sku)
+	return product != null and ShopApi.type_of(product.get("type")) == ShopApi.ITEM_TYPE_CONSUMABLE
 
 
 static func _grant(sku: String) -> Dictionary:
@@ -146,6 +168,7 @@ static func _grant(sku: String) -> Dictionary:
 		"sku": sku,
 		"createdAt": GRushMockInbox.timestamp(Time.get_unix_time_from_system()),
 		"acked": false,
+		"consumable": _consumable(sku),
 	}
 	_grants.append(entry)
 	return entry

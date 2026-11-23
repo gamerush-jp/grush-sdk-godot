@@ -3,15 +3,24 @@ extends RefCounted
 ## 作者のアイテム販売。作者が GameRush の Studio か API キーで登録した商品を、プレイヤーが買う。
 ## GameRush は払った人にアイテムを届けることまでを保証する。ゲームの中での使用は改ざんを防げない。
 ##
-## 購入できるのは Web の GameRush だけ。アプリと LINE では [method purchase] が unsupported、
-## [method products] は `enabled` が false の空の一覧。[method pending]・[method ack]・[method owned] は
-## 今はアプリと LINE では unsupported（Web で買った分は Web で受け取る）。
+## 商品の種類（`type`）は 2 つ。[constant ITEM_TYPE_PERMANENT]（買い切り）は同じプレイヤーが返金されない限り
+## 1 回だけ買え、[method owned] に入る。[constant ITEM_TYPE_CONSUMABLE]（消費）は同じプレイヤーが何度でも買え、
+## 買うたびに付与が 1 件ずつ [method pending] に入り、[method owned] には入らない。
+## 消費のアイテムを、ゲーム内通貨（ほかのアイテムや機能と交換する対価）と抽選（偶然で中身が決まる仕組み）に
+## 使ってはならない。
+##
+## 購入できるのは Web の GameRush と iOS のアプリ。Android のアプリと LINE では [method purchase] が
+## unsupported、[method products] は `enabled` が false の空の一覧で、[method pending]・[method ack]・
+## [method owned] も unsupported。
 ##
 ## 取りこぼさないために、次の順で使う。
 ## 1. [method purchase] を呼ぶ前にセーブする。`redirecting` が返ると、ページはすぐ決済の画面へ移る。
-## 2. 起動時と [signal pending_received] を受けたときに [method pending] を読む。
-## 3. 付与をセーブに反映し、セーブを永続化してから [method ack] する。ack するまで付与は pending に残る。
-## 4. 反映済みの付与の id をセーブに持ち、同じ付与を二度反映しない。
+## 2. 起動時、[signal pending_received] を受けたとき、[method purchase] が `purchased` を返したときに
+##    [method pending] を読む。
+## 3. 付与をセーブに反映し、セーブを永続化してから [method ack] する。ack は「ゲームへ届けた」ことを表し、
+##    ack するまで付与は pending に残る。
+## 4. 反映した付与の id をセーブに持ち、同じ付与を二度反映しない。消費のアイテムは [method owned] で
+##    組み直せないので、特に大事。
 ##
 ## ランタイムの版数が [constant SHOP_PROTOCOL_VERSION] 未満なら、どの呼び出しも unsupported。
 
@@ -20,6 +29,24 @@ const Call := preload("res://addons/grush_sdk/grush_call.gd")
 
 ## アイテム販売が使えるランタイムの版数。
 const SHOP_PROTOCOL_VERSION := 12
+
+## 商品の種類の買い切り。同じプレイヤーは返金されない限り 1 回だけ買え、[method owned] に入る。
+const ITEM_TYPE_PERMANENT := "permanent"
+## 商品の種類の消費。同じプレイヤーが何度でも買え、[method owned] には入らない。
+## ゲーム内通貨と抽選に使ってはならない。
+const ITEM_TYPE_CONSUMABLE := "consumable"
+
+## [method purchase] の答え。ページがすぐ決済の画面へ移る（Web）。
+const PURCHASE_REDIRECTING := "redirecting"
+## [method purchase] の答え。買い終え、付与が [method pending] に入った（iOS のアプリ）。
+const PURCHASE_PURCHASED := "purchased"
+## [method purchase] の答え。支払いの確認や保護者の承認を待っている。済むと付与が [method pending] に入る
+## （iOS のアプリ）。
+const PURCHASE_PENDING := "pending"
+## [method purchase] の答え。プレイヤーが購入をやめた。
+const PURCHASE_CANCELLED := "cancelled"
+## [method purchase] の答え。同じ買い切りの商品をもう持っている。消費のアイテムでは返らない。
+const PURCHASE_ALREADY_OWNED := "alreadyOwned"
 
 ## GameRush と同じ sku の形。`$` は末尾の改行の前でも合うので `\z` で終える。
 const SKU_PATTERN := "^[a-z0-9][a-z0-9_.-]{0,63}\\z"
@@ -74,8 +101,11 @@ func dispose() -> void:
 
 
 ## 売っている商品。value は `{"enabled": bool, "products": Array}` で、商品は
-## `{"sku": String, "name": String, "price_jpy": int}`。販売が止まっているときとアプリ・LINE では
-## `enabled` が false で `products` は空。
+## `{"sku": String, "name": String, "price_jpy": int, "type": String}`。`type` は
+## [constant ITEM_TYPE_PERMANENT] か [constant ITEM_TYPE_CONSUMABLE]。種類を返さない古い GameRush の商品は
+## [constant ITEM_TYPE_PERMANENT]、この SDK が知らない種類は GameRush が返した文字列のまま入る。
+## 販売が止まっているときと Android のアプリ・LINE では `enabled` が false で `products` は空。
+## iOS のアプリでは、App Store の価格（100・120・300・500・1,000 円）に合う商品だけが入る。
 func products() -> Dictionary:
 	var response := await _call("shop.products", {})
 	if not response["ok"]:
@@ -96,16 +126,21 @@ func products() -> Dictionary:
 					"sku": str(entry["sku"]),
 					"name": str(entry.get("name", "")),
 					"price_jpy": int(price) if price is int or price is float else 0,
+					"type": type_of(entry.get("type")),
 				}
 			)
 	return Result.ok({"enabled": true, "products": items})
 
 
-## [param sku] の商品を買う。value は `redirecting`（ページが決済の画面へ移る）・`cancelled`（プレイヤーが
-## やめた）・`alreadyOwned`（もう持っている）のどれか。**呼ぶ前にセーブしておくこと。** `redirecting` の後、
-## ゲームのページはすぐ閉じる。付与は決済から戻ったときに [signal pending_received] と [method pending] で届く。
+## [param sku] の商品を買う。value は `PURCHASE_*` の定数の文字列で、`redirecting`（ページが決済の画面へ移る。
+## Web）・`purchased`（買い終え、付与が [method pending] に入った。iOS のアプリ）・`pending`（支払いの確認や
+## 保護者の承認の待ち。済むと [method pending] に入る。iOS のアプリ）・`cancelled`（プレイヤーがやめた）・
+## `alreadyOwned`（同じ買い切りの商品をもう持っている。消費のアイテムでは返らない）のどれか。この SDK が知らない
+## 値も文字列のまま返す。**呼ぶ前にセーブしておくこと。** `redirecting` の後、ゲームのページはすぐ閉じる。
+## 付与は決済から戻ったときに [signal pending_received] と [method pending] で届く。`purchased` が返ったら
+## [method pending] を読む。
 ## sku が `^[a-z0-9][a-z0-9_.-]{0,63}$` に合わなければ送らずに invalidParams。ゲストは signInRequired、
-## アプリと LINE では unsupported。プレイヤーの答えを待つので、返るまで長くかかることがある。
+## Android のアプリと LINE では unsupported。プレイヤーの答えを待つので、返るまで長くかかることがある。
 func purchase(sku: String) -> Dictionary:
 	if _sku_pattern.search(sku) == null:
 		if not _supported():
@@ -128,8 +163,8 @@ func pending() -> Dictionary:
 	return _grants(await _call("shop.pending", {}), false)
 
 
-## 付与をセーブに反映したことを伝え、value に記録した件数を返す（1 回 1〜100 件の付与の id）。
-## **セーブへ反映して保存してから呼ぶこと。** ack した付与は [method pending] に戻らない。
+## 付与をゲームへ届けたこと（セーブに反映したこと）を伝え、value に記録した件数を返す（1 回 1〜100 件の付与の id）。
+## **セーブへ反映して保存し、反映した付与の id をセーブに持ってから呼ぶこと。** ack した付与は [method pending] に戻らない。
 ## 件数か id の形（UUID）が合わなければ送らずに invalidParams。
 func ack(ids: Array) -> Dictionary:
 	if not _ids_valid(ids):
@@ -146,8 +181,8 @@ func ack(ids: Array) -> Dictionary:
 	return Result.ok(int(count))
 
 
-## 持っている付与のすべて（ack 済みを含む）。value は `{"id", "sku", "created_at", "acked": bool}` の配列。
-## セーブを失ったときに持ち物を戻すのに使う。
+## 持っている買い切りの付与のすべて（ack 済みを含む）。value は `{"id", "sku", "created_at", "acked": bool}` の配列。
+## 返金された付与と、消費のアイテムの付与は入らない。セーブを失ったときに持ち物を戻すのに使う。
 func owned() -> Dictionary:
 	return _grants(await _call("shop.owned", {}), true)
 
@@ -195,6 +230,12 @@ static func _grants(response: Dictionary, with_acked: bool) -> Dictionary:
 
 static func _filled(value: Variant) -> bool:
 	return value is String and value != ""
+
+
+## GameRush が返した商品の種類を、[method products] が返す `type` にする。種類を返さない古い GameRush の商品は
+## どれも買い切りなので [constant ITEM_TYPE_PERMANENT]。知らない文字列は新しい GameRush の種類として、そのまま返す。
+static func type_of(raw: Variant) -> String:
+	return str(raw) if _filled(raw) else ITEM_TYPE_PERMANENT
 
 
 static func grant_of(raw: Dictionary, with_acked: bool) -> Dictionary:
