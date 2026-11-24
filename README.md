@@ -4,7 +4,7 @@ GameRush の GameAPI を Godot 4 から呼ぶアドオン。ビルドの書き�
 
 ## 導入
 
-[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.16.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
+[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.17.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
 
 書き出しは Web。それ以外のプラットフォームでは自動的にモックへ落ちる。
 
@@ -24,6 +24,21 @@ if joined["ok"]:
 ```
 
 部屋が1通を捨てると `error_received` が `{"code": String, "message": String}` で届く。`code` は `"messageTooLarge"`・`"rateLimited"`・`"badFrame"`・`"targetNotAllowed"`（下記の hub の部屋）で、ほかの値が届くこともある。部屋はつながったままで、続けて送れる。部屋が閉じるときは `closed` だけが届く。
+
+### 作者かどうか
+
+`get_self()` の値の `is_creator` は、遊んでいる人がこのゲームのオーナーか、承諾済みの共同制作者なら `true`。GameRush のサーバが決め、ゲームから変えられない。デバッグメニューのような、作者にだけ見せる表示の出し分けに使う。
+
+```gdscript
+var self_result: Dictionary = await GRush.player.get_self()
+if self_result["ok"] and self_result["value"]["is_creator"]:
+    debug_menu.show()
+```
+
+- **権限ではない。** ゲームは遊ぶ人のブラウザで動くので、書き換えれば作者でなくても `true` に見せられる。アイテムの付与やスコアのように守りたいことを、このフラグだけで許さない。課金のテストは、GameRush が作者かどうかを確かめるテスト購入（下記「作者のアイテム販売」）を使う
+- ゲストは常に `false`
+- 共同制作者を承諾したとき・外したときは、反映に最大 30 秒ほどかかる
+- エディタのモックは既定で `true`。`GRushMock.is_creator = false` で作者でない人として試せる（`GRushMock.signed_in = false` では常に `false`）
 
 ### 部屋の定員と形
 
@@ -272,6 +287,7 @@ GRush.analytics.log_economy_event(
 GRushMock.signed_in = true
 GRushMock.display_name = "Editor Player"
 GRushMock.grant_profile_consent = false
+GRushMock.is_creator = false
 GRushMock.unreliable_drop_rate = 0.1
 GRushMock.share_status = "cancelled"
 

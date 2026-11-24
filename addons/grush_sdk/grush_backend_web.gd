@@ -430,6 +430,7 @@ static func _player_of(player: Variant) -> Dictionary:
 		"pseudoId": str(player["pseudoId"]),
 		"isGuest": bool(player["isGuest"]),
 		"profileConsent": bool(player["profileConsent"]),
+		"isCreator": _is_true(player.get("isCreator")),
 	}
 	if profile != null:
 		normalized["profile"] = {
@@ -437,6 +438,11 @@ static func _player_of(player: Variant) -> Dictionary:
 			"avatarUrl": profile["avatarUrl"],
 		}
 	return normalized
+
+
+# 値が無いときや真偽値でないときは偽にする。
+static func _is_true(value: Variant) -> bool:
+	return value is bool and value
 
 
 static func _code_of(error: Variant) -> String:

@@ -529,6 +529,7 @@ func _player_wire(consented: bool) -> Dictionary:
 		"pseudoId": _local_pseudo_id(),
 		"isGuest": not GRushMock.signed_in,
 		"profileConsent": consented and GRushMock.signed_in,
+		"isCreator": GRushMock.is_creator and GRushMock.signed_in,
 		"profile": {"displayName": GRushMock.display_name, "avatarUrl": GRushMock.avatar_url},
 	}
 

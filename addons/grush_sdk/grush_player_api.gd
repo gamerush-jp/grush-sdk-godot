@@ -12,6 +12,11 @@ func _init(grush: Node, backend: RefCounted) -> void:
 	_backend = backend
 
 
+## 自分のプレイヤー。値は pseudo_id・is_guest・profile_consent・is_creator・display_name・avatar_url を持つ。
+## is_creator は、このゲームのオーナーか承諾済みの共同制作者なら true で、GameRush のサーバが決める。
+## 作者にだけ見せる表示の出し分けに使う。権限ではない。ゲームは遊ぶ人の手元で動き、書き換えれば true に
+## 見せられるので、守りたい操作は GameRush が確かめるもの（ショップのテスト購入など）に任せる。
+## ゲストは常に false。
 func get_self() -> Dictionary:
 	return await _call("player.getSelf")
 
@@ -48,6 +53,7 @@ static func _normalize(raw: Variant) -> Dictionary:
 		"pseudo_id": source.get("pseudoId", ""),
 		"is_guest": source.get("isGuest", true),
 		"profile_consent": consent,
+		"is_creator": source.get("isCreator", false) == true,
 		"display_name": display_name,
 		"avatar_url": avatar_url,
 	}

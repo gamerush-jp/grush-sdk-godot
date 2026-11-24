@@ -13,6 +13,9 @@ static var signed_in := true
 static var display_name := "Editor Player"
 static var avatar_url: Variant = null
 static var grant_profile_consent := true
+## get_self の is_creator に返す値。エディタで動かしているのは作者なので既定は true。
+## [member signed_in] が false なら、この設定によらず false。
+static var is_creator := true
 ## 通報の確認ダイアログでプレイヤーが押す答え。エディタ用。
 static var confirm_player_state_report := true
 ## 受信箱の通報の確認でプレイヤーが押す答え。
