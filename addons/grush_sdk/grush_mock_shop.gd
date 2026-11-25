@@ -13,11 +13,13 @@ const ShopApi := preload("res://addons/grush_sdk/grush_shop_api.gd")
 const MAX_ACK_IDS := ShopApi.MAX_ACK_IDS
 
 ## 売っている商品。[code]GRush.shop.products[/code] が返すのと同じ形（`sku`・`name`・`price_jpy`・`type`）の
-## Dictionary。`type` は `"permanent"`（買い切り）か `"consumable"`（消費）で、省くと `"permanent"`。
-## 形は確かめずにそのまま返す。
+## Dictionary。`price_jpy` は作者が付けられる価格（[code]GRush.ShopApi.Price[/code] のどれか。
+## 例: [code]GRush.ShopApi.Price.YEN_120[/code]）で、ほかの値の商品は警告を出して売らない。
+## `type` は `"permanent"`（買い切り）か `"consumable"`（消費）で、省くと `"permanent"`。
+## ほかの形は確かめずにそのまま返す。
 static var products: Array = [
-	{"sku": "starter_pack", "name": "Starter Pack", "price_jpy": 120},
-	{"sku": "remove_ads", "name": "Remove Ads", "price_jpy": 480},
+	{"sku": "starter_pack", "name": "Starter Pack", "price_jpy": ShopApi.Price.YEN_120},
+	{"sku": "remove_ads", "name": "Remove Ads", "price_jpy": ShopApi.Price.YEN_500},
 ]
 ## false にすると、Android のアプリと LINE の GameRush と同じく products が `enabled: false` の空の一覧になり、
 ## purchase が unsupported になる。
@@ -76,7 +78,7 @@ static func handle_products() -> Dictionary:
 		return Result.ok({"enabled": false, "products": []})
 	var listed: Array = []
 	for entry in products:
-		if entry is Dictionary:
+		if _listed(entry):
 			listed.append(
 				{
 					"sku": entry.get("sku", ""),
@@ -152,9 +154,25 @@ static func _sells(sku: String) -> bool:
 
 static func _product(sku: String) -> Variant:
 	for entry in products:
-		if entry is Dictionary and entry.get("sku") == sku:
+		if entry is Dictionary and entry.get("sku") == sku and _listed(entry):
 			return entry
 	return null
+
+
+# GameRush は作者が付けられる価格の商品しか登録できないので、ほかの価格の商品は売らない。
+static func _listed(entry: Variant) -> bool:
+	if not (entry is Dictionary):
+		return false
+	var price: Variant = entry.get("price_jpy")
+	if ShopApi.is_price(price):
+		return true
+	push_warning(
+		(
+			"[GRushMock] shop product %s left out: price_jpy %s is not one of %s."
+			% [str(entry.get("sku", "")), str(price), str(ShopApi.PRICES)]
+		)
+	)
+	return false
 
 
 static func _consumable(sku: String) -> bool:

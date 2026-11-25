@@ -4,7 +4,7 @@ GameRush の GameAPI を Godot 4 から呼ぶアドオン。ビルドの書き�
 
 ## 導入
 
-[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.17.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
+[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.18.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
 
 書き出しは Web。それ以外のプラットフォームでは自動的にモックへ落ちる。
 
@@ -183,7 +183,7 @@ func _buy(sku: String) -> void:
         _receive_items()  # iOS のアプリは、買い終えると pending に入れる
 ```
 
-作者が GameRush の Studio か API キーで登録した商品（sku・商品名・価格・種類）を、プレイヤーが買う。ゲームは `products()` で商品を読み、value は `{"enabled": bool, "products": Array}`、商品は `{"sku", "name", "price_jpy", "type"}`。販売が止まっているときは `enabled` が `false` で一覧は空。
+作者が GameRush の Studio か API キーで登録した商品（sku・商品名・価格・種類）を、プレイヤーが買う。ゲームは `products()` で商品を読み、value は `{"enabled": bool, "products": Array}`、商品は `{"sku", "name", "price_jpy", "type"}`。`price_jpy`（税込みの円）は作者が付けられる価格のどれかで、`GRush.ShopApi.Price`（`YEN_100`・`YEN_120`・`YEN_300`・`YEN_500`・`YEN_1000`・`YEN_2000`・`YEN_3000`・`YEN_5000`。値は円の額）と、その値を並べた `GRush.ShopApi.PRICES` で読める。販売が止まっているときは `enabled` が `false` で一覧は空。
 
 商品の種類（`type`）は 2 つ。種類を返さない古い GameRush の商品は `"permanent"`。この SDK が知らない種類は文字列のまま入る。
 
@@ -329,7 +329,15 @@ GRushMockTrades.expire(listing["id"])
 GRushMockPlayerStates.define("custom-rival", {"level": 3}, false, 1300)
 ```
 
-アイテム販売のモックは `GRushMockShop.products`（`{"sku", "name", "price_jpy", "type"}` の配列。既定は買い切りの `starter_pack` と `remove_ads`）を売る。`type` は `"permanent"` か `"consumable"` で、省くと `"permanent"`。`purchase` は決済の画面へ移らず、その場で付与を `pending` に積んで `"redirecting"` を返し、後のフレームで `pending_received` を起こす。持っている買い切りの商品は `"alreadyOwned"`。消費の商品は何度でも買え、そのたびに付与を積み、`owned()` には入らない。売っていない sku は `invalidParams`、ゲスト（`GRushMock.signed_in = false`）は `signInRequired`。`GRushMockShop.purchase_status = "cancelled"` でやめたときを、`"purchased"` で iOS のアプリの購入（付与を積むが `pending_received` は起こさない）を、`"pending"` で承認の待ち（付与を積まない）を、`GRushMockShop.purchase_available = false` で Android のアプリと LINE（`purchase` が `unsupported`、`products` が空）を試せる。`GRushMockShop.grant(sku)` は決済を通さずに付与を積む（別の端末で買った分が届くのを試す）。付与はプロセスの中だけに持ち、`GRushMockShop.reset()` で消える。
+アイテム販売のモックは `GRushMockShop.products`（`{"sku", "name", "price_jpy", "type"}` の配列。既定は買い切りの `starter_pack`（120 円）と `remove_ads`（500 円））を売る。`price_jpy` は `GRush.ShopApi.Price` の値（例: `GRush.ShopApi.Price.YEN_120`）で書き、ほかの価格の商品は警告を出して売らない（`products` に出ず、`purchase` は `invalidParams`）。`type` は `"permanent"` か `"consumable"` で、省くと `"permanent"`。`purchase` は決済の画面へ移らず、その場で付与を `pending` に積んで `"redirecting"` を返し、後のフレームで `pending_received` を起こす。持っている買い切りの商品は `"alreadyOwned"`。消費の商品は何度でも買え、そのたびに付与を積み、`owned()` には入らない。売っていない sku は `invalidParams`、ゲスト（`GRushMock.signed_in = false`）は `signInRequired`。`GRushMockShop.purchase_status = "cancelled"` でやめたときを、`"purchased"` で iOS のアプリの購入（付与を積むが `pending_received` は起こさない）を、`"pending"` で承認の待ち（付与を積まない）を、`GRushMockShop.purchase_available = false` で Android のアプリと LINE（`purchase` が `unsupported`、`products` が空）を試せる。`GRushMockShop.grant(sku)` は決済を通さずに付与を積む（別の端末で買った分が届くのを試す）。付与はプロセスの中だけに持ち、`GRushMockShop.reset()` で消える。
+
+```gdscript
+GRushMockShop.products = [
+    {"sku": "stage.extra", "name": "追加ステージ", "price_jpy": GRush.ShopApi.Price.YEN_300},
+    {"sku": "potion.heal", "name": "回復薬", "price_jpy": GRush.ShopApi.Price.YEN_120, "type": GRush.ShopApi.ITEM_TYPE_CONSUMABLE},
+]
+GRushMockShop.grant("potion.heal")  # 決済を通さずに付与を積み、pending_received を起こす
+```
 
 **`unreliable_drop_rate` は既定 0 だが、出荷前に必ず 0 より大きくして試すこと。** WebSocket 中継では `unreliable` も落ちずに届くため、パケットが落ちる前提で書けているかを確認できる場所はエディタのモックだけになる。
 

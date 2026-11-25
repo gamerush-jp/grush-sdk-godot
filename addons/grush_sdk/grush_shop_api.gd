@@ -36,6 +36,39 @@ const ITEM_TYPE_PERMANENT := "permanent"
 ## ゲーム内通貨と抽選に使ってはならない。
 const ITEM_TYPE_CONSUMABLE := "consumable"
 
+## 作者が商品に付けられる税込みの価格（円）。GameRush はこのどれかの価格だけを登録できる。値は円の額そのもので、
+## `Price.YEN_120` は 120。[method products] の `price_jpy` もこのどれかの int。
+enum Price {
+	## 100 円。
+	YEN_100 = 100,
+	## 120 円。
+	YEN_120 = 120,
+	## 300 円。
+	YEN_300 = 300,
+	## 500 円。
+	YEN_500 = 500,
+	## 1,000 円。
+	YEN_1000 = 1000,
+	## 2,000 円。
+	YEN_2000 = 2000,
+	## 3,000 円。
+	YEN_3000 = 3000,
+	## 5,000 円。
+	YEN_5000 = 5000,
+}
+
+## 作者が付けられる価格（円）を安い順に並べたもの。[enum Price] の値と同じ。
+const PRICES := [
+	Price.YEN_100,
+	Price.YEN_120,
+	Price.YEN_300,
+	Price.YEN_500,
+	Price.YEN_1000,
+	Price.YEN_2000,
+	Price.YEN_3000,
+	Price.YEN_5000,
+]
+
 ## [method purchase] の答え。ページがすぐ決済の画面へ移る（Web）。
 const PURCHASE_REDIRECTING := "redirecting"
 ## [method purchase] の答え。買い終え、付与が [method pending] に入った（iOS のアプリ）。
@@ -236,6 +269,14 @@ static func _filled(value: Variant) -> bool:
 ## どれも買い切りなので [constant ITEM_TYPE_PERMANENT]。知らない文字列は新しい GameRush の種類として、そのまま返す。
 static func type_of(raw: Variant) -> String:
 	return str(raw) if _filled(raw) else ITEM_TYPE_PERMANENT
+
+
+## [param value] が作者の付けられる価格（[constant PRICES] のどれか）なら true。JSON から読んだ値のように、
+## 整数の値の float も認める。
+static func is_price(value: Variant) -> bool:
+	if value is float and float(value) == roundf(float(value)):
+		return PRICES.has(int(value))
+	return value is int and PRICES.has(value)
 
 
 static func grant_of(raw: Dictionary, with_acked: bool) -> Dictionary:
