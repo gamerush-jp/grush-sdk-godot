@@ -13,7 +13,7 @@
 [grush-sdk-js](https://github.com/gamerush-jp/grush-sdk-js) の `grush-sdk.js`（グローバル版）か `grush-sdk.mjs`（ES Modules 版）をゲームのフォルダへコピーするか、CDN から読んでください。依存はありません。CDN から読むときは版を固定してください。版を固定しないと、アップロード済みのビルドの挙動が後から変わります。
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/gamerush-jp/grush-sdk-js@v0.23.0/grush-sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/gamerush-jp/grush-sdk-js@v0.24.0/grush-sdk.js"></script>
 <script>
   GRush.leaderboards.submit("high_score", 12000).then((result) => {
     if (result.ok) console.log("rank", result.value.rank);

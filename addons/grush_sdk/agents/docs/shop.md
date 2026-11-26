@@ -134,6 +134,6 @@ if (bought.ok && bought.value.status === "purchased") await receiveItems();
 | `cancelled` | プレイヤーが購入をやめた。Web で購入を呼んだとき |
 | `alreadyOwned` | 同じ買い切りの商品をもう持っている。消費のアイテムでは返らない |
 
-結果が `purchased` のときは、渡したアイテムの sku も載ります（Unity は `GRushShopPurchaseResult.Sku`、Godot は `shop.purchase_detail(sku)` の `sku`、JavaScript は `sku`）。`protocolVersion` 15 以上の GameRush と、Unity `v1.23.0`・Godot `v1.20.0`・JavaScript `v0.23.0` 以降の SDK で読めます。載らないこともあるので、届いたアイテムを見せる演出に使い、セーブへの反映は受け取り待ちの付与で行ってください。
+結果が `purchased` のときは、渡したアイテムの sku も載ります（Unity は `GRushShopPurchaseResult.Sku`、Godot は `shop.purchase_detail(sku)` の `sku`、JavaScript は `sku`）。`protocolVersion` 15 以上の GameRush と、Unity `v1.23.0`・Godot `v1.20.0`・JavaScript `v0.24.0` 以降の SDK で読めます。載らないこともあるので、届いたアイテムを見せる演出に使い、セーブへの反映は受け取り待ちの付与で行ってください。
 
 購入はプレイヤーが確かめるのを待つので、結果まで最大 10 分かかります。
