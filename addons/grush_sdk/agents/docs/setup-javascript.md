@@ -41,7 +41,7 @@ AI エージェント（Claude Code・Codex など）向けに、開発者向け
 SDK には TypeScript の型（`grush-sdk.d.ts`）が入っていて、別のパッケージは要りません。npm には出していないので、GitHub から版を固定して入れてください。Vite などのバンドラでビルドすると、SDK はゲームのビルドに含まれます。
 
 ```bash
-npm install github:gamerush-jp/grush-sdk-js#v0.23.0
+npm install github:gamerush-jp/grush-sdk-js#v0.24.0
 ```
 
 ```typescript
