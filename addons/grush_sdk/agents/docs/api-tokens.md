@@ -48,7 +48,7 @@ curl -X PUT "https://gamerush.jp/api/games/$GAME_ID/leaderboards/high_score" \
 
 Unity を使うなら自分で実装する必要はありません。[Unity Editor からアップロードする](editor-upload.md#editor-upload) の Editor 拡張がこの手順を持っています。ここは自前の CLI やエディタ拡張を書く人向けです。
 
-ターミナルからビルドを上げるなら、[grush-sdk-js](https://github.com/gamerush-jp/grush-sdk-js) に付いている `grush` コマンドもこの手順を持っています。`grush login` でブラウザ承認してトークンを保存し、`grush upload <フォルダか zip> --game <ゲーム ID>` で上げます（`--new <タイトル>` なら `private` のゲームを作ってから上げます）。Node.js 20 以上で `npx -p github:gamerush-jp/grush-sdk-js grush login` のように動かせ、CI では Studio で発行したトークンを環境変数 `GRUSH_TOKEN` に入れて使えます。フォルダの中身をそのまま上げるので、Unity と Godot のビルドを GameRush のプレイヤーで起動させるには Editor 拡張か Studio から上げてください。使い方はリポジトリの README にあります。
+ターミナルからビルドを上げるなら、[grush-sdk-js](https://github.com/gamerush-jp/grush-sdk-js) に付いている `grush` コマンドもこの手順を持っています。`grush login` でブラウザ承認してトークンを保存し、`grush upload <フォルダか zip> --game <ゲーム ID>` で上げます（`--new <タイトル>` なら `private` のゲームを作ってから上げます）。Node.js 20 以上で `npx -p github:gamerush-jp/grush-sdk-js grush login` のように動かせ、CI では Studio で発行したトークンを環境変数 `GRUSH_TOKEN` に入れて使えます。フォルダの中身をそのまま上げるので、Unity と Godot のビルドを GameRush のプレイヤーで起動させるには Editor 拡張か Studio から上げてください。`grush update` は、プロジェクトに入っている SDK（Unity の `Packages/manifest.json` の版、Godot の `addons/grush_sdk/`、JavaScript の `grush-sdk.js`）を最新のリリースに上げます。`grush upload` などは、CLI や SDK の版が最新のリリースより古いと警告を出します。使い方はリポジトリの README にあります。
 
 手元でループバックのサーバを立てて `/studio/authorize` を開き、承認後に戻ってきたコードを交換します（[RFC 8252](https://www.rfc-editor.org/rfc/rfc8252) + PKCE）。手順とパラメータは [API リファレンスの loopback 承認](api-tokens.md#loopback) にあります。
 
