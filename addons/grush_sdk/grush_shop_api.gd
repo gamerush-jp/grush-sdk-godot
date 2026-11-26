@@ -229,7 +229,7 @@ func purchase_detail(sku: String) -> Dictionary:
 
 
 ## まだ ack していない付与（買って届いたアイテム）。value は `{"id": String, "sku": String,
-## "created_at": String}` の配列で、1回に [constant MAX_ACK_IDS] 件まで。起動時にも読む。
+## "created_at": String, "count": int}` の配列（`count` はいつも 1）で、1回に [constant MAX_ACK_IDS] 件まで。起動時にも読む。
 ## ack したら、残りがあるかもしれないのでもう一度読む（空になるまで繰り返す）。
 func pending() -> Dictionary:
 	return _grants(await _call("shop.pending", {}), false)
@@ -330,7 +330,8 @@ static func grant_of(raw: Dictionary, with_acked: bool) -> Dictionary:
 	if with_acked:
 		var acked: Variant = raw.get("acked")
 		grant["acked"] = acked is bool and acked
-		grant["count"] = _count_of(raw.get("count"))
+	# pending の付与は 1 件で 1 つ。Unity の GRushShopGrant.Count と揃える。
+	grant["count"] = _count_of(raw.get("count")) if with_acked else 1
 	return grant
 
 

@@ -58,10 +58,24 @@ static var _next_pending_token := 1
 
 ## 決済を通さずに [param sku] の付与を pending に積み、合図を起こす。別の端末で買った分が届くのを試すのに使う。
 ## sku の形が合わなければ何もせず null、積めば付与（[code]GRush.shop.pending[/code] と同じ形）を返す。
-## [member products] の消費の商品の付与は [code]GRush.shop.owned[/code] に入らない。
+## [member products] の消費の商品の付与は [code]GRush.shop.owned[/code] に入らない。[member products] の抽選の sku では、
+## 購入と同じく 1 つを引いて、当たり（かぶったときは代わり）を積む。GameRush は抽選の商品そのものを付与しない。
+## 受け付けない抽選の sku では何もせず null。
 static func grant(sku: String) -> Variant:
 	if _sku_pattern.search(sku) == null:
 		return null
+	for item in products:
+		if (
+			item is Dictionary
+			and item.get("sku") == sku
+			and ShopApi.type_of(item.get("type")) == ShopApi.ITEM_TYPE_LOTTERY
+		):
+			var lottery: Variant = _lottery(_product(sku))
+			# 売れない（GameRush が受け付けない）抽選からは引けない。
+			if lottery == null:
+				return null
+			sku = _draw(lottery)["sku"]
+			break
 	var entry := _grant(sku)
 	_signal(sku)
 	return ShopApi.grant_of(_wire(entry, false), false)
