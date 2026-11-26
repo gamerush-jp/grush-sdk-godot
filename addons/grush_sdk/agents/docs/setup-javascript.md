@@ -4,9 +4,9 @@
 > 元のページ: https://gamerush.jp/sdk#javascript
 
 <a id="javascript"></a>
-## JavaScript（素の index.html）
+## JavaScript・TypeScript
 
-エンジンを使わず HTML と JavaScript だけで書いたゲーム向けです。バンドラは要りません。`<script>` タグ 1 行でも、ES Modules の import でも読めます。
+HTML と JavaScript で書いたゲームと、Phaser などを TypeScript で書いたゲーム向けです。素の HTML ならバンドラは要らず、`<script>` タグ 1 行でも、ES Modules の import でも読めます。TypeScript で使うときは、下の「TypeScript」を見てください。
 
 ### 導入
 
@@ -34,6 +34,38 @@
 ```
 
 AI エージェント（Claude Code・Codex など）向けに、開発者向けの文書と同じ内容の Markdown を SDK に同梱しています。プロジェクトのフォルダで `npx -p github:gamerush-jp/grush-sdk-js grush agents` を実行すると、`.gamerush/` に入り、プロジェクトの `AGENTS.md`（あれば `CLAUDE.md` も）から指されます。JavaScript `v0.23.0` 以降の SDK で使えます。
+
+<a id="typescript"></a>
+### TypeScript
+
+SDK には TypeScript の型（`grush-sdk.d.ts`）が入っていて、別のパッケージは要りません。npm には出していないので、GitHub から版を固定して入れてください。Vite などのバンドラでビルドすると、SDK はゲームのビルドに含まれます。
+
+```bash
+npm install github:gamerush-jp/grush-sdk-js#v0.23.0
+```
+
+```typescript
+import GRush, { type GRushCode } from "grush-sdk-js";
+
+const result = await GRush.leaderboards.submit("high_score", 12000);
+if (result.ok) {
+  console.log("rank", result.value.rank); // number | null
+} else {
+  const code: GRushCode = result.code; // "rateLimited" など
+  console.log("not sent", code);
+}
+```
+
+結果は `ok` を確かめると、`value` の型か `code` の型に絞り込まれます。`GRushResult`・`GRushCode` など、型の名前も import できます。
+
+`<script>` タグで CDN から読むときは、同じ版を `npm install -D` で開発用に入れ、型の参照を 1 行書きます。`window.GRush` に型が付きます。
+
+```typescript
+/// <reference types="grush-sdk-js" />
+
+const self = await window.GRush.player.getSelf();
+if (self.ok) console.log(self.value.pseudoId);
+```
 
 ### API
 

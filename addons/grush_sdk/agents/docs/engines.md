@@ -90,6 +90,8 @@ Unity と判別されたビルドは、出力フォルダの `index.html` と `T
 
 Phaser と判別するのは、ビルドの JavaScript に Phaser 本体が見つかったときです。CDN から Phaser を読み込むビルドや、Phaser 本体を含む JavaScript を Brotli で事前圧縮した `.js.br` だけにしたビルドは、Phaser 本体が見つからないので Web として取り込みます。どちらでも `index.html` をそのまま使います。
 
+GameRush の SDK は TypeScript の型つきで、Phaser のプロジェクトへ npm で入れて import できます（[TypeScript](setup-javascript.md#typescript)）。
+
 <a id="web"></a>
 ## Web（その他のツール）
 
