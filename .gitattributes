@@ -1,0 +1,2 @@
+# AI エージェント向けの文書はモノレポの生成物で、改行も含めて一致を照らすので、どの OS でも LF で取り出す。
+addons/grush_sdk/agents/** text eol=lf

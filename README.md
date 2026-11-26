@@ -4,7 +4,7 @@ GameRush の GameAPI を Godot 4 から呼ぶアドオン。ビルドの書き�
 
 ## 導入
 
-[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.18.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
+[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.19.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
 
 書き出しは Web。それ以外のプラットフォームでは自動的にモックへ落ちる。
 
@@ -381,6 +381,16 @@ godot --headless --path . --script res://addons/grush_sdk_build/grush_build_cli.
 | 1 | 書き出し失敗（多くは書き出しテンプレートの未インストール） |
 | 2 | 引数・Godot のバージョン・書き出し先（プロジェクト直下、`addons/`、`.godot/`）が不正 |
 | 4 | GameRush のアップロード上限（2000 ファイル / 50MB）を超えた |
+
+## AI エージェント向けの文書
+
+`addons/grush_sdk/agents/` に、AI エージェント（Claude Code・Codex など）が読むための GameRush の文書を同梱している。中身は [開発者向けページ](https://gamerush.jp/developers) と同じで、守ることと文書の地図を `AGENTS.md` にまとめてある。フォルダに `.gdignore` を置いてあるので、エディタは取り込まず、書き出しにも入らない。
+
+**GameRush SDK** を有効にして、メニューの `Project > Tools > GameRush: AI エージェント向けの文書を入れる` を実行すると、プロジェクトの根（`res://`）に入れる。
+
+- `.gamerush/` へ文書を写す。`.gamerush/AGENTS.md` には SDK の版が入る。前の版の `.gamerush/docs/` は消して入れ直す
+- プロジェクトの `AGENTS.md`（無ければ作る）と、あれば `CLAUDE.md` に、`.gamerush/AGENTS.md` を指す段を `<!-- gamerush-agents:begin -->` と `<!-- gamerush-agents:end -->` で囲んで足す。もう一度実行すると、その段だけを書き換える
+- SDK を上げたら、もう一度実行する
 
 ## サンプル
 

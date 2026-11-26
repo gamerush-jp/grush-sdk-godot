@@ -1,0 +1,18 @@
+{
+  "dir": ".gamerush",
+  "versionPlaceholder": "{{GRUSH_SDK_VERSION}}",
+  "begin": "<!-- gamerush-agents:begin -->",
+  "end": "<!-- gamerush-agents:end -->",
+  "pointers": [
+    {
+      "file": "AGENTS.md",
+      "create": true,
+      "block": "## GameRush\n\nこのプロジェクトは GameRush（https://gamerush.jp）に載せるゲームです。GameRush の SDK・ビルドの規則・API は [.gamerush/AGENTS.md](.gamerush/AGENTS.md) を読んでください。"
+    },
+    {
+      "file": "CLAUDE.md",
+      "create": false,
+      "block": "@.gamerush/AGENTS.md"
+    }
+  ]
+}
