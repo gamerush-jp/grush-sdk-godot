@@ -8,8 +8,8 @@ const Manifest := preload("res://addons/grush_sdk/grush_mock_manifest.gd")
 
 const STATE_PATH := GRushMock.STATE_PATH
 const STATE_SECTION := GRushMock.STATE_SECTION
-# モックが実装している一番新しい機能（部屋への招待）の版数。
-const MOCK_PROTOCOL_VERSION := 13
+# モックが実装している一番新しい機能（アイテムの販売の抽選）の版数。
+const MOCK_PROTOCOL_VERSION := 15
 # 1回の招待で選べる人数の上限。
 const INVITE_MAX_RECIPIENTS := 30
 # GameRush と同じ mode と部屋コードの形。`$` は末尾の改行の前でも合うので `\z` で終える。

@@ -4,7 +4,7 @@ GameRush の GameAPI を Godot 4 から呼ぶアドオン。ビルドの書き�
 
 ## 導入
 
-[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.19.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
+[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.20.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
 
 書き出しは Web。それ以外のプラットフォームでは自動的にモックへ落ちる。
 
@@ -185,16 +185,21 @@ func _buy(sku: String) -> void:
 
 作者が GameRush の Studio か API キーで登録した商品（sku・商品名・価格・種類）を、プレイヤーが買う。ゲームは `products()` で商品を読み、value は `{"enabled": bool, "products": Array}`、商品は `{"sku", "name", "price_jpy", "type"}`。`price_jpy`（税込みの円）は作者が付けられる価格のどれかで、`GRush.ShopApi.Price`（`YEN_100`・`YEN_120`・`YEN_300`・`YEN_500`・`YEN_1000`・`YEN_2000`・`YEN_3000`・`YEN_5000`。値は円の額）と、その値を並べた `GRush.ShopApi.PRICES` で読める。販売が止まっているときは `enabled` が `false` で一覧は空。
 
-商品の種類（`type`）は 2 つ。種類を返さない古い GameRush の商品は `"permanent"`。この SDK が知らない種類は文字列のまま入る。
+商品の種類（`type`）は 3 つ。種類を返さない古い GameRush の商品は `"permanent"`。この SDK が知らない種類は文字列のまま入る。
 
 | `type` | 定数 | 買える回数 | `owned()` |
 |---|---|---|---|
 | `"permanent"`（買い切り） | `GRush.ShopApi.ITEM_TYPE_PERMANENT` | 同じプレイヤーは、返金されない限り 1 回だけ | 入る |
 | `"consumable"`（消費） | `GRush.ShopApi.ITEM_TYPE_CONSUMABLE` | 同じプレイヤーが何度でも | 入らない |
+| `"lottery"`（抽選） | `GRush.ShopApi.ITEM_TYPE_LOTTERY` | 同じプレイヤーが何度でも。買うたびに、同じゲームの買い切りか消費のアイテムを 1 つ確率で引いて渡す | 抽選そのものは入らない。当たった買い切りのアイテムは入る |
 
-**消費のアイテムを、ゲーム内通貨（ほかのアイテムや機能と交換する対価）として使うことと、抽選（ガチャなど、偶然で中身が決まる仕組み）に使わせることはできない。** 販売に関する取り決めで禁じている。
+**消費のアイテムを、ゲーム内通貨（ほかのアイテムや機能と交換する対価）として使うことと、抽選（ガチャなど、偶然で中身が決まる仕組み）に使わせることはできない。** 販売に関する取り決めで禁じている。抽選の商品（`"lottery"`）を作れるかも、販売に関する取り決めに従う。
 
-`purchase(sku)` の value は `"redirecting"`（決済の画面へ移る。Web）・`"purchased"`（買い終え、付与が `pending()` に入った。iOS のアプリ）・`"pending"`（支払いの確認や保護者の承認の待ち。済むと `pending()` に入る。iOS のアプリ）・`"cancelled"`（プレイヤーがやめた）・`"alreadyOwned"`（同じ買い切りの商品をもう持っている。消費のアイテムでは返らない）。定数は `GRush.ShopApi.PURCHASE_*`。この SDK が知らない値も文字列のまま返る。**`redirecting` が返るとページはすぐ Stripe の決済画面へ移るので、`purchase` を呼ぶ前にセーブしておく。** プレイヤーの答えを待つので、返るまで長くかかることがある。sku が `^[a-z0-9][a-z0-9_.-]{0,63}$` に合わなければ送らずに `invalidParams`。ゲストは `signInRequired`。
+抽選の商品は、さらに中身と確率の `"odds"`（`{"sku", "name", "percent"}` の配列。`percent` は小数第 2 位までの float で合計 100）と、持っている買い切りのアイテムが当たったときの扱いの `"duplicate_policy"` を持つ。`GRush.ShopApi.DUPLICATE_POLICY_FALLBACK`（`"fallback"`）は代わりに `"fallback"`（`{"sku", "name"}`。消費のアイテム）を渡し、`GRush.ShopApi.DUPLICATE_POLICY_STACK`（`"stack"`）は当たったアイテムをもう 1 つ渡して `owned()` の `"count"` を増やす（`"fallback"` は `null`）。抽選を返すのは `protocol_version` が `GRush.ShopApi.LOTTERY_PROTOCOL_VERSION`（15）以上の GameRush だけ。
+
+`purchase(sku)` の value は `"redirecting"`（決済の画面へ移る。Web）・`"purchased"`（買い終え、付与が `pending()` に入った。iOS のアプリ）・`"pending"`（支払いの確認や保護者の承認の待ち。済むと `pending()` に入る。iOS のアプリ）・`"cancelled"`（プレイヤーがやめた）・`"alreadyOwned"`（同じ買い切りの商品をもう持っている。消費と抽選のアイテムでは返らない）。定数は `GRush.ShopApi.PURCHASE_*`。この SDK が知らない値も文字列のまま返る。
+
+渡したアイテムも知りたいときは `purchase_detail(sku)` を使う。value は `{"status", "sku", "drawn_sku", "fallback"}` で、`"status"` は `purchase` の value と同じ。`"sku"` は渡したアイテムで、`"purchased"` のときだけ、GameRush が付与を知らせたら入る（`protocol_version` 15 以上）。ほかは `""`。抽選では、当たったアイテムが `"drawn_sku"` に入り、持っている買い切りが当たって代わりを渡したときは `"fallback"` が `true` で `"sku"` が代わりのアイテム。抽選でなければ `"drawn_sku"` は `""`、`"fallback"` は `false`。どれも届いたアイテムを見せる演出に使い、セーブへの反映は `pending()` の付与で行う。**`redirecting` が返るとページはすぐ Stripe の決済画面へ移るので、`purchase` を呼ぶ前にセーブしておく。** プレイヤーの答えを待つので、返るまで長くかかることがある。sku が `^[a-z0-9][a-z0-9_.-]{0,63}$` に合わなければ送らずに `invalidParams`。ゲストは `signInRequired`。
 
 買ったアイテムは付与として届き、`ack` するまで `pending()` に残る。`ack` は「ゲームへ届けた」ことを表す。消費のアイテムは買うたびに付与が 1 件ずつ届く。
 
@@ -202,7 +207,7 @@ func _buy(sku: String) -> void:
 2. 付与をセーブに反映し、セーブを永続化してから `ack(ids)` する（1 回 1〜100 件の UUID。合わなければ送らずに `invalidParams`。value は記録した件数）。ack したら、残りがあればもう一度 `pending()` を読む
 3. 反映した付与の id をセーブに持ち、同じ付与を二度反映しない。消費のアイテムは `owned()` で組み直せないので、買い切りのアイテムよりも大事。保存の前に ack すると、保存に失敗したときに買ったアイテムが失われる
 
-`pending_received` は決済から戻って付与が届いたときに、買った商品の sku で発火する。接続より先に届いた分は、接続した後に1回だけ届く。JS の呼び出しの中ではなく `call_deferred` で後から配る。`owned()` は ack 済みを含む買い切りの付与のすべて（`{"id", "sku", "created_at", "acked"}`）で、セーブを失ったときに持ち物を戻すのに使う。返金された付与と、消費のアイテムの付与は入らない。
+`pending_received` は決済から戻って付与が届いたときに、買った商品の sku で発火する。接続より先に届いた分は、接続した後に1回だけ届く。JS の呼び出しの中ではなく `call_deferred` で後から配る。`owned()` は ack 済みを含む買い切りのアイテムを、アイテムごとに 1 件（`{"id", "sku", "created_at", "acked", "count"}`）で、セーブを失ったときに持ち物を戻すのに使う。`"count"` は持っている数で、抽選の `"stack"` で同じアイテムがまた当たると増え、`"id"`・`"created_at"`・`"acked"` はそのアイテムの最初の付与のもの。数を返さない古い GameRush では 1。返金された付与と、消費のアイテムの付与は入らない。
 
 購入できるのは Web の GameRush と iOS のアプリ。Android のアプリと LINE では `purchase` が `unsupported`、`products` は `enabled` が `false` の空の一覧で、`pending`・`ack`・`owned` も `unsupported`。iOS のアプリでは App Store のアプリ内課金で買い、価格が `GRush.ShopApi.PRICES` のどれかの商品だけが `products()` に出る。ゲームの中でのアイテムの使用は改ざんを防げない。GameRush が保証するのは、払った人にアイテムが届くことまで。古い GameRush（`protocol_version` 12 未満）ではどれも `unsupported` で、`pending_received` は発火しない。
 
@@ -329,14 +334,28 @@ GRushMockTrades.expire(listing["id"])
 GRushMockPlayerStates.define("custom-rival", {"level": 3}, false, 1300)
 ```
 
-アイテム販売のモックは `GRushMockShop.products`（`{"sku", "name", "price_jpy", "type"}` の配列。既定は買い切りの `starter_pack`（120 円）と `remove_ads`（500 円））を売る。`price_jpy` は `GRush.ShopApi.Price` の値（例: `GRush.ShopApi.Price.YEN_120`）で書き、ほかの価格の商品は警告を出して売らない（`products` に出ず、`purchase` は `invalidParams`）。`type` は `"permanent"` か `"consumable"` で、省くと `"permanent"`。`purchase` は決済の画面へ移らず、その場で付与を `pending` に積んで `"redirecting"` を返し、後のフレームで `pending_received` を起こす。持っている買い切りの商品は `"alreadyOwned"`。消費の商品は何度でも買え、そのたびに付与を積み、`owned()` には入らない。売っていない sku は `invalidParams`、ゲスト（`GRushMock.signed_in = false`）は `signInRequired`。`GRushMockShop.purchase_status = "cancelled"` でやめたときを、`"purchased"` で iOS のアプリの購入（付与を積むが `pending_received` は起こさない）を、`"pending"` で承認の待ち（付与を積まない）を、`GRushMockShop.purchase_available = false` で Android のアプリと LINE（`purchase` が `unsupported`、`products` が空）を試せる。`GRushMockShop.grant(sku)` は決済を通さずに付与を積む（別の端末で買った分が届くのを試す）。付与はプロセスの中だけに持ち、`GRushMockShop.reset()` で消える。
+アイテム販売のモックは `GRushMockShop.products`（`{"sku", "name", "price_jpy", "type"}` の配列。既定は買い切りの `starter_pack`（120 円）と `remove_ads`（500 円））を売る。`price_jpy` は `GRush.ShopApi.Price` の値（例: `GRush.ShopApi.Price.YEN_120`）で書き、ほかの価格の商品は警告を出して売らない（`products` に出ず、`purchase` は `invalidParams`）。`type` は `"permanent"`・`"consumable"`・`"lottery"`（抽選。下記）で、省くと `"permanent"`。`purchase` は決済の画面へ移らず、その場で付与を `pending` に積んで `"redirecting"` を返し、後のフレームで `pending_received` を起こす。持っている買い切りの商品は `"alreadyOwned"`。消費の商品は何度でも買え、そのたびに付与を積み、`owned()` には入らない。売っていない sku は `invalidParams`、ゲスト（`GRushMock.signed_in = false`）は `signInRequired`。`GRushMockShop.purchase_status = "cancelled"` でやめたときを、`"purchased"` で iOS のアプリの購入（付与を積むが `pending_received` は起こさない）を、`"pending"` で承認の待ち（付与を積まない）を、`GRushMockShop.purchase_available = false` で Android のアプリと LINE（`purchase` が `unsupported`、`products` が空）を試せる。`GRushMockShop.grant(sku)` は決済を通さずに付与を積む（別の端末で買った分が届くのを試す）。付与はプロセスの中だけに持ち、`GRushMockShop.reset()` で消える。
+
+抽選は `"type": "lottery"` の商品で、GameRush の Studio で登録するときと同じく、中身と確率を `"odds"`（`{"sku", "weight_bp"}` の配列。`weight_bp` はベーシスポイントで 1 = 0.01%、合計 10000、2〜30 件の別々の sku）、かぶりの扱いを `"duplicate_policy"`（`"fallback"` か `"stack"`）、`"fallback"` のときの代わりを `"fallback_sku"` で書く。中身と `"fallback_sku"` は `GRushMockShop.products` のほかの商品で、中身は買い切りか消費、`"fallback_sku"` は消費の商品。合わない抽選は警告を出して売らない。`products()` は GameRush と同じく `"odds"` を名前と `"percent"` で返す。`purchase` は確率どおりに 1 つを引いて付与し、`"purchased"` のときは `purchase_detail` で `"sku"`・`"drawn_sku"`・`"fallback"` を読める。`GRushMockShop.lottery_draw` に中身の sku を入れると、確率によらずそれを当てる（かぶりの扱いを試すとき。`""` で確率どおり）。
 
 ```gdscript
 GRushMockShop.products = [
     {"sku": "stage.extra", "name": "追加ステージ", "price_jpy": GRush.ShopApi.Price.YEN_300},
     {"sku": "potion.heal", "name": "回復薬", "price_jpy": GRush.ShopApi.Price.YEN_120, "type": GRush.ShopApi.ITEM_TYPE_CONSUMABLE},
+    {
+        "sku": "box", "name": "ふくびき", "price_jpy": GRush.ShopApi.Price.YEN_120,
+        "type": GRush.ShopApi.ITEM_TYPE_LOTTERY,
+        "odds": [{"sku": "stage.extra", "weight_bp": 1000}, {"sku": "potion.heal", "weight_bp": 9000}],
+        "duplicate_policy": GRush.ShopApi.DUPLICATE_POLICY_FALLBACK,
+        "fallback_sku": "potion.heal",
+    },
 ]
 GRushMockShop.grant("potion.heal")  # 決済を通さずに付与を積み、pending_received を起こす
+
+GRushMockShop.purchase_status = GRush.ShopApi.PURCHASE_PURCHASED
+GRushMockShop.lottery_draw = "stage.extra"
+await GRush.shop.purchase_detail("box")  # value は {"status": "purchased", "sku": "stage.extra", "drawn_sku": "stage.extra", "fallback": false}
+await GRush.shop.purchase_detail("box")  # 持っているので {"status": "purchased", "sku": "potion.heal", "drawn_sku": "stage.extra", "fallback": true}
 ```
 
 **`unreliable_drop_rate` は既定 0 だが、出荷前に必ず 0 より大きくして試すこと。** WebSocket 中継では `unreliable` も落ちずに届くため、パケットが落ちる前提で書けているかを確認できる場所はエディタのモックだけになる。

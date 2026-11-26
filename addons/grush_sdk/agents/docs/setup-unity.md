@@ -8,7 +8,7 @@
 
 ### 導入
 
-Package Manager の **Add package from git URL...** に `https://github.com/gamerush-jp/grush-sdk-unity.git#v1.22.0` を入れてください。`#` の後ろが版で、新しい版へ上げるときはここを書き換えます。Unity 2021.3 以降、ビルドターゲットは WebGL です。パッケージ識別子は `cc.gamerush.sdk` です（ソースは [grush-sdk-unity](https://github.com/gamerush-jp/grush-sdk-unity)）。
+Package Manager の **Add package from git URL...** に `https://github.com/gamerush-jp/grush-sdk-unity.git#v1.23.0` を入れてください。`#` の後ろが版で、新しい版へ上げるときはここを書き換えます。Unity 2021.3 以降、ビルドターゲットは WebGL です。パッケージ識別子は `cc.gamerush.sdk` です（ソースは [grush-sdk-unity](https://github.com/gamerush-jp/grush-sdk-unity)）。
 
 入れると **GameRush** メニューが増え、Unity から出ずにログインしてビルドを上げられます（[Unity Editor からアップロードする](editor-upload.md#editor-upload)）。
 
