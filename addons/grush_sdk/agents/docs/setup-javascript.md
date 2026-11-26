@@ -33,7 +33,7 @@
 </script>
 ```
 
-AI エージェント（Claude Code・Codex など）向けに、開発者向けの文書と同じ内容の Markdown を SDK に同梱しています。プロジェクトのフォルダで `npx -p github:gamerush-jp/grush-sdk-js grush agents` を実行すると、`.gamerush/` に入り、プロジェクトの `AGENTS.md`（あれば `CLAUDE.md` も）から指されます。JavaScript `v0.22.0` 以降の SDK で使えます。
+AI エージェント（Claude Code・Codex など）向けに、開発者向けの文書と同じ内容の Markdown を SDK に同梱しています。プロジェクトのフォルダで `npx -p github:gamerush-jp/grush-sdk-js grush agents` を実行すると、`.gamerush/` に入り、プロジェクトの `AGENTS.md`（あれば `CLAUDE.md` も）から指されます。JavaScript `v0.23.0` 以降の SDK で使えます。
 
 ### API
 
