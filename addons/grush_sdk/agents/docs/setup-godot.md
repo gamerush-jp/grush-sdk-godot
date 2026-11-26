@@ -8,7 +8,7 @@
 
 ### 導入
 
-[grush-sdk-godot のリリース](https://github.com/gamerush-jp/grush-sdk-godot/releases/tag/v1.20.0)（`v1.20.0`）を取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、**Project Settings > Plugins** で有効にしてください。autoload シングルトン `GRush` が自動登録されます。書き出しは Web です。
+[grush-sdk-godot のリリース](https://github.com/gamerush-jp/grush-sdk-godot/releases/tag/v1.20.1)（`v1.20.1`）を取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、**Project Settings > Plugins** で有効にしてください。autoload シングルトン `GRush` が自動登録されます。書き出しは Web です。
 
 AI エージェント（Claude Code・Codex など）向けに、開発者向けの文書と同じ内容の Markdown を SDK に同梱しています。メニューの **Project > Tools > GameRush: AI エージェント向けの文書を入れる** で、プロジェクトの根の `.gamerush/` に入り、プロジェクトの `AGENTS.md`（あれば `CLAUDE.md` も）から指されます。Godot `v1.19.0` 以降の SDK で使えます。
 

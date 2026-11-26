@@ -6,7 +6,7 @@ GameRush（https://gamerush.jp）は、ブラウザで動くゲームを縦の�
 
 ## 必ず守ること
 
-1. ビルドの合計は 50MB まで、ファイル数は 2000 までです。HTML は1ファイル 5MB までです。
+1. ビルドの合計は 100MB まで、ファイル数は 2000 までです。HTML は1ファイル 5MB までです。
 2. 上げられるファイルの拡張子は次だけです（後ろに `.br` / `.gz` が付いた名前は、その前の拡張子で決まります）: `.html` `.js` `.wasm` `.data` `.json` `.png` `.jpg` `.jpeg` `.gif` `.bmp` `.css` `.unityweb` `.pck` `.ico` `.svg` `.webp` `.mp3` `.m4a` `.aac` `.ogg` `.wav` `.mp4` `.txt` `.csv` `.xml` `.yml` `.yaml` `.ttf` `.woff` `.woff2` `.webmanifest` `.bytes` `.bundle` `.assetbundle` `.bin` `.dat` `.bank` `.ress` `.resource` `.fnt` `.atlas` `.skel` `.glsl` `.frag` `.vert` `.tmx` `.tsx` `.tmj` `.tsj` `.otf` `.webm` `.ktx` `.pvr` `.ktx2` `.basis` `.glb` `.ldtk`。Studio の画面で上げて Unity と判別されたビルドでは、表に無いファイルを黙って除きます（`StreamingAssets` の下を除く）。
 3. HTML は圧縮せずに入れます。圧縮した HTML（`.html.gz` / `.html.br`）は、Studio の画面と JavaScript SDK の `grush upload` では黙って除かれ、HTTP API ではビルドごと受け付けません。
 4. Studio の画面で上げたビルドは中身からエンジンを判別し、Unity・Godot・GDevelop と判別されたものは、書き出した HTML の代わりに GameRush 側のプレイヤーで起動します。Phaser と Web（その他のツール）は最上位の `index.html` をそのまま使います。HTTP API と JavaScript SDK の `grush upload` で上げたビルドは判別を通らず、送ったファイルをそのまま使い、最上位の `index.html` が入口です（[engines.md](docs/engines.md#formats)）。

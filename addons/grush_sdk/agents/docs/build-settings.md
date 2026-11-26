@@ -16,7 +16,7 @@ Unity と Godot の SDK は、[ゲームの最適化ガイド](optimization.md) 
 | 1 | ビルド・書き出しに失敗した（Godot は Web の書き出しテンプレートが入っていないときもここ） |
 | 2 | 引数・出力先・エンジンの環境が足りない（Unity の WebGL モジュールが無い、Godot が 4.3 より古い、Unity で GameRush のビルド以外のファイルがあるフォルダを出力先にした、Godot でプロジェクト直下や `addons/` を出力先にした、など） |
 | 3 | 想定外の例外（Unity のみ） |
-| 4 | できたビルドが GameRush のアップロード条件に合わない（Unity はファイルの種類・loader / framework / wasm / data のそろい方・2000 ファイル・50MB、Godot は 2000 ファイル・50MB を見る） |
+| 4 | できたビルドが GameRush のアップロード条件に合わない（Unity はファイルの種類・loader / framework / wasm / data のそろい方・2000 ファイル・100MB、Godot は 2000 ファイル・100MB を見る） |
 
 <a id="build-unity"></a>
 ### Unity

@@ -52,7 +52,7 @@ curl -X POST "https://gamerush.jp/api/builds/$BUILD_ID/complete" \
 
 - `engine` は `unity` / `godot` / `gdevelop` / `phaser` / `web` のどれかです。ほかの値はエラーにならず、`null`（エンジン未指定）で保存されます。
 - ルートに `index.html` か、ロード設定の `__grush-player.json` のどちらか一方が要ります。無ければ `400` `build.missingEntry`、両方あれば `400` `build.conflictingEntry` です。HTML は圧縮せずに送ってください。ロード設定は 64KB までです。
-- ファイル数は 2000 まで、合計は 50MB までです（目安は 15MB 以下で、30MB 以上は危険です）。`size` はそのまま送るバイト数を書きます。
+- ファイル数は 2000 まで、合計は 100MB までです（目安は 15MB 以下で、30MB 以上は危険です）。`size` はそのまま送るバイト数を書きます。
 - 使えるファイルの種類は Studio からのアップロードと同じで、拡張子で決まります（大文字小文字は問わず、後ろに `.br` / `.gz` が付いた名前は、その前の拡張子で決まります）。ほかの拡張子のファイルが1つでもあると、作成が `400` `build.unsupportedExtension`（`params.path` に原因のファイル）になります。ソースマップ（`.js.map`）もこれに当たるので、含めないでください。
 - Unity の `Build/x.wasm.br` のように、書き出した時点で `.br` / `.gz` が付いたファイルはその名前のまま送ります。自分で圧縮したファイルを送るときは、元の名前の `path` に `"encoding": "gzip"` か `"encoding": "br"` を添え、`size` は圧縮後の大きさにします。ただし HTML は `encoding` を付けても `.gz` / `.br` の名前でも受け付けず、`400` `build.compressedHtml` になります。`grush.json` は `"encoding": "br"` を受け付けません（下）。
 - 最上位の `grush.json` はランキングの定義として読みます（書式は [SDK ガイドのランキング](leaderboards.md#leaderboards)）。トークンに `leaderboards:write` が無ければ `403` です。`grush.json` は 64KB までで、圧縮しないか `"encoding": "gzip"` で送ります。`"encoding": "br"` は作成の時点で `400` `build.leaderboardManifestCompressed`、圧縮せずに送る 64KB 超のファイルは `400` `build.leaderboardManifestTooLarge` です。gzip で送ったものの大きさは展開してから確かめ、64KB を超えれば complete が `422` を返します。

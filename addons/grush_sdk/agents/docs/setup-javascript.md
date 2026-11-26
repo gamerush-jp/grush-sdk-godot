@@ -13,7 +13,7 @@ HTML と JavaScript で書いたゲームと、Phaser などを TypeScript で�
 [grush-sdk-js](https://github.com/gamerush-jp/grush-sdk-js) の `grush-sdk.js`（グローバル版）か `grush-sdk.mjs`（ES Modules 版）をゲームのフォルダへコピーするか、CDN から読んでください。依存はありません。CDN から読むときは版を固定してください。版を固定しないと、アップロード済みのビルドの挙動が後から変わります。
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/gamerush-jp/grush-sdk-js@v0.24.0/grush-sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/gamerush-jp/grush-sdk-js@v0.24.1/grush-sdk.js"></script>
 <script>
   GRush.leaderboards.submit("high_score", 12000).then((result) => {
     if (result.ok) console.log("rank", result.value.rank);
@@ -41,7 +41,7 @@ AI エージェント（Claude Code・Codex など）向けに、開発者向け
 SDK には TypeScript の型（`grush-sdk.d.ts`）が入っていて、別のパッケージは要りません。npm には出していないので、GitHub から版を固定して入れてください。Vite などのバンドラでビルドすると、SDK はゲームのビルドに含まれます。
 
 ```bash
-npm install github:gamerush-jp/grush-sdk-js#v0.24.0
+npm install github:gamerush-jp/grush-sdk-js#v0.24.1
 ```
 
 ```typescript

@@ -4,7 +4,7 @@ GameRush の GameAPI を Godot 4 から呼ぶアドオン。ビルドの書き�
 
 ## 導入
 
-[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.20.0`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
+[リリース](https://github.com/gamerush-jp/grush-sdk-godot/releases)から版（例: `v1.20.1`）を選んで取得し、`addons/grush_sdk/` をプロジェクトの `addons/` へコピーし、`Project > Project Settings > Plugins` で **GameRush SDK** を有効にする。有効化すると autoload シングルトン `GRush` が自動で登録される。
 
 書き出しは Web。それ以外のプラットフォームでは自動的にモックへ落ちる。
 
@@ -399,7 +399,7 @@ godot --headless --path . --script res://addons/grush_sdk_build/grush_build_cli.
 | 0 | 成功（目安の 15MB を超えたときは警告だけ出る。30MB 以上は危険） |
 | 1 | 書き出し失敗（多くは書き出しテンプレートの未インストール） |
 | 2 | 引数・Godot のバージョン・書き出し先（プロジェクト直下、`addons/`、`.godot/`）が不正 |
-| 4 | GameRush のアップロード上限（2000 ファイル / 50MB）を超えた |
+| 4 | GameRush のアップロード上限（2000 ファイル / 100MB）を超えた |
 
 ## AI エージェント向けの文書
 

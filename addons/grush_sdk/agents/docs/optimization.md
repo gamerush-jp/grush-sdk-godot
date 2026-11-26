@@ -13,7 +13,7 @@ GameRush のプレイヤーは、フィードを流しながらスマホでゲ�
 - Unity は **Compression Format を Brotli**、**Decompression Fallback を切る**
 - Unity は **Managed Stripping Level を Medium 以上**、**Strip Engine Code を有効**、**IL2CPP Code Generation を Faster (smaller) builds**
 - Unity は **Enable Multithreading を切る**。Godot は 4.3 以降で **Thread Support を切る**（スレッドありのビルドは GameRush で起動しない）
-- 合計のビルドサイズは **15MB 以下** を目安にする。**30MB 以上は危険**（上限は 50MB）
+- 合計のビルドサイズは **15MB 以下** を目安にする。**30MB 以上は危険**（上限は 100MB）
 - テクスチャと音声を圧縮し、使っていないアセットとパッケージを消す
 - 最初のシーンは小さく作り、残りは後から読み込む
 - ファイル数を少なくし、1ファイルは **25MB 未満** にする（[先読みに載せる](optimization.md#load-time-prefetch)）
@@ -44,7 +44,7 @@ Unity と Godot の設定は SDK からまとめて適用してビルドでき�
 | 〜15MB | 目安。快適に遊べる |
 | 15〜30MB | 先読みが間に合わなかったとき、モバイル回線で待ちが目立ち始める |
 | 30MB 以上 | 危険。飛ばされやすく、スマホでは読み込み中にページが落ちることもある |
-| 50MB | アップロードの上限（超えると受け付けない） |
+| 100MB | アップロードの上限（超えると受け付けない） |
 
 <a id="load-time-data"></a>
 ### データを小さくする
